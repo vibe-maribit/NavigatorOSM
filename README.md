@@ -1,64 +1,58 @@
 # NavigatoreOSM per iPad Mini 1 (MD528TY/A - iOS 9.3.5)
 
-Applicazione **100% NATIVA iOS** (Objective-C + MapKit + UIKit) per trasformare l'iPad Mini 1ª Generazione (architettura 32-bit `armv7`, 512 MB RAM) in un navigatore GPS per auto con **OpenStreetMap**, **itinerari alternativi**, **traffico in tempo reale**, **ricerca rapida POI** e **guida vocale italiana offline**.
+Applicazione **100% NATIVA iOS** (Objective-C + MapKit + UIKit) per trasformare un vecchio iPad Mini 1ª Generazione (architettura 32-bit `armv7`, 512 MB RAM, iOS 9.3.5) in un moderno navigatore GPS per auto in stile **Google Maps & Waze** con **OpenStreetMap**, **visuale prospettica 3D/2D commutabile**, **itinerari alternativi**, **traffico in tempo reale**, **ricerca rapida POI** e **guida vocale italiana offline**.
 
-Zero WebKit, zero browser: l'app consuma meno di 25 MB di RAM e sfrutta la GPU Apple per un rendering a **60 FPS stabili**.
+Zero WebKit, zero browser: l'app consuma meno di 25 MB di RAM e sfrutta la GPU Apple per un rendering a **60 FPS fluidi**.
 
 ---
 
-## Nuove Funzionalità Avanzate
+## Indice della Documentazione Completa (`docs/`)
 
-### 1. Itinerari Alternativi & Scelta Percorso
-- Quando cerchi una destinazione, il motore OSRM calcola fino a **3 itinerari alternativi**.
-- Un selettore grafico ad alto contrasto in basso a schermo (`RouteSelectorView`) mostra:
-  - **Tempo stimato e differenza** (es. `18 min • Più veloce` vs `24 min • +6 min`).
-  - **Distanza chilometrica** (es. `14.2 km`).
-  - **Sintesi vie principali** (es. `via A4 / Viale Certosa`).
-  - **Stato del traffico previsto** (`Scorrevole 🟢`, `Rallentamenti 🟡`, `Traffico intenso 🔴`).
-- Puoi toccare direttamente le linee dei percorsi sulla mappa (la rotta attiva è in blu brillante `#007AFF`, le alternative in viola `#5856D6`) o i pulsanti del selettore, per poi avviare la navigazione con il pulsante verde `▶ Avvia Navigazione`.
+Per consultare ogni dettaglio del progetto, leggi le guide dedicate nella cartella [`docs/`](docs/):
 
-### 2. Flusso Traffico in Tempo Reale
-- **Layer Traffico Dedicato** (`TrafficTileOverlay`): integrabile con API TomTom Flow / HERE Raster Flow tramite il pulsante `🚦` in basso a destra.
-- **Analisi di Congestione OSRM**: valutazione automatica della velocità stimata per ciascun segmento di strada, con indicatore di traffico nel riepilogo rotta.
+| Documento | Argomento Trattato |
+| :--- | :--- |
+| 📖 [**`01_ARCHITETTURA_E_CODICE.md`**](docs/01_ARCHITETTURA_E_CODICE.md) | Architettura software, spiegazione approfondita di tutte le classi Objective-C, MapKit, OSRM, AVSpeech, socket UDP per tethering GPS. |
+| 📲 [**`02_GUIDA_INSTALLAZIONE_E_JAILBREAK.md`**](docs/02_GUIDA_INSTALLAZIONE_E_JAILBREAK.md) | Guida passo-passo per il Jailbreak di iOS 9.3.5, installazione di AppSync Unified e flash via USB da Linux con `./install-usb.sh`. |
+| 🚗 [**`03_MANUALE_USO_IN_AUTO.md`**](docs/03_MANUALE_USO_IN_AUTO.md) | Manuale completo per l'auto: alimentazione 2.1A, hotspot iPhone vs Android, visuale 3D/2D, itinerari, traffico, allerta limiti di velocità e POI rapidi. |
+| 🛠️ [**`04_GUIDA_BUILD_E_SVILUPPO.md`**](docs/04_GUIDA_BUILD_E_SVILUPPO.md) | Come ricompilare il codice su Linux con il container Docker Theos, aggiungere file al `Makefile` e gestire la cronologia Git. |
 
-### 3. Ricalcolo Automatico Fuori Rotta (Auto-Rerouting)
-- Se durante la guida imbocchi una strada diversa o sbagli un'uscita (scostamento > 70 metri per 4 rilevamenti consecutivi):
-- La voce guida annuncia: *"Ricalcolo del percorso in corso..."*.
-- Il sistema aggiorna automaticamente il tracciato e le manovre dalla tua posizione GPS attuale alla destinazione, senza distrarre il guidatore.
+---
 
-### 4. Ricerca Rapida POI (Punti di Interesse)
-- Con il pulsante `📍 POI` in alto a destra, compare una barra rapida per trovare con un tocco:
-  - `⛽ Benzina` (Distributori carburante vicini)
-  - `🅿️ Parcheggi`
-  - `☕ Bar / Ristoro`
-  - `💊 Farmacie`
-- I punti trovati vengono visualizzati con spille personalizzate sulla mappa; toccando una spilla puoi visualizzare i dettagli e impostarla subito come nuova destinazione.
+## Installazione Immediata su iPad via Cavo USB (Linux)
 
-### 5. Tachimetro Intelligente con Allerta Limiti di Velocità
-- Tachimetro digitale in km/h con design HUD scuro.
-- Toccando il tachimetro puoi impostare la soglia del limite (`50`, `70`, `90`, `110`, `130 km/h` o `Off`).
-- Se superi il limite, il riquadro si illumina di **rosso brillante** con bordo giallo e ti avvisa del superamento!
+Sul tuo PC Linux è tutto già configurato e pronto.
 
-### 6. Orario di Arrivo Reale (ETA) & Schermo Sempre Attivo
-- L'HUD superiore calcola dinamicamente l'ora esatta di arrivo (`Arrivo: 18:45 • 14 km • 22 min`).
-- `UIApplication.idleTimerDisabled = YES` garantisce che lo schermo resti sempre acceso senza mai andare in standby.
+1. Collega l'iPad Mini 1 con il cavo USB Lightning al PC Linux.
+2. Se l'iPad chiede *"Vuoi autorizzare questo computer?"*, tocca **Autorizza**.
+3. Esegui dal terminale:
+   ```bash
+   cd /home/nicola/Devel/retrofit/iOS/NavigatoreOSM
+   ./install-usb.sh
+   ```
+
+Lo script installerà il pacchetto `NavigatoreOSM.ipa` sul tablet in circa 5 secondi!
 
 ---
 
 ## File Principali del Progetto
 
-- `NavigatoreOSM.ipa`: Pacchetto finale pronto da installare sull'iPad.
-- `package-ipa.sh`: Compila e genera l'IPA tramite container Docker Theos.
-- `install-usb.sh`: Installa l'app via USB con un solo comando.
-- `android-gps-forwarder.py`: Invia le coordinate GPS dal computer o da un telefono Android via UDP all'iPad (utile per il modello solo Wi-Fi).
+- **`NavigatoreOSM.ipa`**: Il file di installazione finale pronto per iOS 9.3.5 (32-bit `armv7`).
+- **`install-usb.sh`**: Script per installare l'app sull'iPad via cavo USB con un solo comando.
+- **`package-ipa.sh`**: Script che avvia il container Docker Theos e ricompila l'app generando l'IPA.
+- **`android-gps-forwarder.py`**: Script per inviare le coordinate GPS via Wi-Fi/UDP da smartphone Android o computer verso l'iPad Mini solo Wi-Fi (porta 8888).
+- **`NavigatoreOSM/`**: Tutti i codici sorgente nativi Objective-C, controller, viste e asset.
+- **`docs/`**: Cartella con la documentazione tecnica e le guide d'uso complete.
 
 ---
 
-## Installazione Rapida via USB
+## Panoramica delle Funzionalità
 
-Collega l'iPad Mini 1 al PC Linux con il cavo USB Lightning ed esegui:
-```bash
-cd /home/nicola/Devel/retrofit/iOS/NavigatoreOSM
-./install-usb.sh
-```
-*(Se preferisci il comando diretto: `ideviceinstaller -i NavigatoreOSM.ipa`)*.
+- **Visuale 3D Prospettica / 2D Pianta Commutabile**: Pulsante `3D / 2D` per passare dalla visuale a volo d'uccello ortogonale (2D) alla prospettiva cockpit inclinata a 56° (3D) che segue la marcia con zoom dinamico alla velocità.
+- **Design Moderno Stile Waze / Google Maps**: Scheda manovre verde smeraldo `#00875A` con anteprima della seconda svolta, barra di viaggio inferiore con orario di arrivo ETA esatto, e tachimetro circolare Waze con indicatore del limite e allarme visivo in caso di eccesso.
+- **Itinerari Alternativi**: Calcolo di più rotte con OSRM e selezione tramite cassetto flottante con confronto tempi, km e traffico.
+- **Layer Traffico in Tempo Reale**: Overlay trasparente del flusso di traffico stradale attivabile con il tasto `🚦`.
+- **Ricerca Rapida POI**: Trova con un tocco distributori di benzina (`⛽`), parcheggi (`🅿️`), bar/ristoro (`☕`) e farmacie (`💊`) posizionando i pin sulla mappa.
+- **Schermo Sempre Attivo**: `UIApplication.idleTimerDisabled = YES` impedisce lo spegnimento dello schermo durante la guida.
+- **Guida Vocale Italiana Offline**: Sintesi vocale di sistema turn-by-turn fluida e naturale con `AVSpeechSynthesizer`.
+- **Ricalcolo Automatico Fuori Rotta**: Se sbagli strada, l'app ricalcola la rotta all'istante senza distrarti.
