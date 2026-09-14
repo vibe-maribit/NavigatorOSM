@@ -1,0 +1,17 @@
+# Theos build directories
+.theos/
+obj/
+build_ipa/
+*.o
+*.d
+*.unsigned
+.build_session
+
+# Binari distribuiti (generabili con ./package-ipa.sh)
+*.ipa
+
+# File di sistema e editor
+.DS_Store
+*.swp
+*~
+.vscode/
