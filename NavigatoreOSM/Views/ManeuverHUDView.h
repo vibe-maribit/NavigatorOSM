@@ -6,8 +6,10 @@
 
 @property (nonatomic, copy) void (^onTapBlock)(void);
 
-- (void)updateWithManeuver:(ManeuverStep *)step distanceToStep:(double)distance;
-- (void)updateTripRemainingDistance:(double)distance duration:(NSTimeInterval)duration trafficStatus:(NSString *)traffic;
+- (void)updateWithManeuver:(ManeuverStep *)step
+            distanceToStep:(double)distance
+                  nextStep:(ManeuverStep *)nextStep;
+
 - (void)reset;
 
 @end

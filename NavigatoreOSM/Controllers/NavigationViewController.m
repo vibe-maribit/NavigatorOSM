@@ -7,6 +7,7 @@
 #import "../Services/NetworkGPSReceiver.h"
 #import "../Views/SpeedometerView.h"
 #import "../Views/ManeuverHUDView.h"
+#import "../Views/ModernTripBarView.h"
 #import "../Views/RouteSelectorView.h"
 #import "../Views/QuickPOIShelfView.h"
 
@@ -18,22 +19,24 @@
 @property (nonatomic, strong) CLLocation *currentLocation;
 @property (nonatomic, assign) CLLocationDirection currentHeading;
 
-// UI HUD
+// UI HUD Moderna Waze / Google Maps
 @property (nonatomic, strong) ManeuverHUDView *maneuverHUD;
+@property (nonatomic, strong) ModernTripBarView *tripBar;
 @property (nonatomic, strong) SpeedometerView *speedometer;
 @property (nonatomic, strong) RouteSelectorView *routeSelector;
 @property (nonatomic, strong) QuickPOIShelfView *poiShelf;
 
-@property (nonatomic, strong) UIButton *searchButton;
-@property (nonatomic, strong) UIButton *poiButton;
+// Controlli Flottanti (FAB)
+@property (nonatomic, strong) UIButton *topSearchPill;
+@property (nonatomic, strong) UIButton *view3DButton;
 @property (nonatomic, strong) UIButton *recenterButton;
-@property (nonatomic, strong) UIButton *themeButton;
 @property (nonatomic, strong) UIButton *trafficButton;
+@property (nonatomic, strong) UIButton *themeButton;
 @property (nonatomic, strong) UIButton *muteButton;
-@property (nonatomic, strong) UIButton *cancelRouteButton;
 @property (nonatomic, strong) UILabel *gpsSourceLabel;
 
-// Stato Itinerari e Navigazione
+// Stato 3D / 2D e Navigazione
+@property (nonatomic, assign) BOOL is3DMode;
 @property (nonatomic, strong) NSArray<RouteInfo *> *availableRoutes;
 @property (nonatomic, strong) RouteInfo *currentRoute;
 @property (nonatomic, assign) NSUInteger currentStepIndex;
@@ -52,19 +55,21 @@
     // 1. Evita assolutamente lo spegnimento dello schermo durante la guida!
     [UIApplication sharedApplication].idleTimerDisabled = YES;
 
-    // 2. Mappa Nativa con MapKit
+    // 2. Mappa Nativa con MapKit e supporto 3D
     self.mapView = [[MKMapView alloc] initWithFrame:self.view.bounds];
     self.mapView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.mapView.delegate = self;
     self.mapView.showsUserLocation = YES;
-    self.mapView.userTrackingMode = MKUserTrackingModeFollowWithHeading;
     [self.view addSubview:self.mapView];
 
-    // 3. Sovrapponi il layer OpenStreetMap base
+    // Modalità 3D attiva di default (visuale prospettica auto)
+    self.is3DMode = YES;
+
+    // 3. Sovrapponi layer OpenStreetMap base
     self.osmOverlay = [[OSMTileOverlay alloc] initWithTheme:OSMMapThemeStandard];
     [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveLabels];
 
-    // 4. Sovrapponi il layer Traffico in tempo reale
+    // 4. Layer Traffico in tempo reale
     self.trafficOverlay = [TrafficTileOverlay sharedOverlay];
     if (self.trafficOverlay.isEnabled) {
         [self.mapView addOverlay:self.trafficOverlay level:MKOverlayLevelAboveRoads];
@@ -76,7 +81,7 @@
     self.locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation;
     self.locationManager.activityType = CLActivityTypeAutomotiveNavigation;
     self.locationManager.distanceFilter = 1.0;
-    self.locationManager.headingFilter = 3.0;
+    self.locationManager.headingFilter = 2.0;
 
     if ([self.locationManager respondsToSelector:@selector(requestWhenInUseAuthorization)]) {
         [self.locationManager requestWhenInUseAuthorization];
@@ -84,17 +89,17 @@
     [self.locationManager startUpdatingLocation];
     [self.locationManager startUpdatingHeading];
 
-    // 6. Avvia ricevitore GPS di rete (UDP 8888) per tethering da Android
+    // 6. Ricevitore GPS di rete (UDP 8888) per tethering da Android
     [NetworkGPSReceiver sharedReceiver].delegate = self;
     [[NetworkGPSReceiver sharedReceiver] startListeningOnPort:8888];
 
     self.poiAnnotations = [NSMutableArray array];
 
-    // 8. Costruisci tutti i controlli HUD per auto
-    [self setupUIControls];
+    // 7. Costruisci l'interfaccia grafica moderna in stile Google Maps / Waze
+    [self setupModernUI];
 
     // Messaggio vocale di avvio
-    [[VoiceGuidanceService sharedService] speak:@"Navigatore pronto con mappe OpenStreetMap e traffico."];
+    [[VoiceGuidanceService sharedService] speak:@"Navigatore pronto con visuale 3D prospettica."];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -102,106 +107,101 @@
     [UIApplication sharedApplication].idleTimerDisabled = YES;
 }
 
-#pragma mark - Setup UI Controls
+#pragma mark - Setup UI Moderna (Google Maps / Waze)
 
-- (void)setupUIControls {
+- (void)setupModernUI {
     CGFloat w = self.view.bounds.size.width;
     CGFloat h = self.view.bounds.size.height;
 
-    // Scheda Manovre in alto a sinistra
-    self.maneuverHUD = [[ManeuverHUDView alloc] initWithFrame:CGRectMake(20, 20, 380, 95)];
-    self.maneuverHUD.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
     __weak NavigationViewController *weakSelf = self;
+
+    // 1. Barra di Ricerca a Pillola Flottante Superiore (Stile Google Maps)
+    self.topSearchPill = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.topSearchPill.frame = CGRectMake(24, 20, MIN(380, w - 48), 48);
+    self.topSearchPill.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.95];
+    self.topSearchPill.layer.cornerRadius = 24.0;
+    self.topSearchPill.layer.borderColor = [[UIColor colorWithWhite:0.35 alpha:0.7] CGColor];
+    self.topSearchPill.layer.borderWidth = 1.0;
+    self.topSearchPill.layer.shadowColor = [[UIColor blackColor] CGColor];
+    self.topSearchPill.layer.shadowOpacity = 0.5;
+    self.topSearchPill.layer.shadowRadius = 8.0;
+    self.topSearchPill.layer.shadowOffset = CGSizeMake(0, 3);
+    [self.topSearchPill setTitle:@"  🔍 Cerca destinazione o indirizzo..." forState:UIControlStateNormal];
+    [self.topSearchPill setTitleColor:[UIColor colorWithWhite:0.9 alpha:1.0] forState:UIControlStateNormal];
+    self.topSearchPill.titleLabel.font = [UIFont systemFontOfSize:15.0];
+    self.topSearchPill.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    self.topSearchPill.contentEdgeInsets = UIEdgeInsetsMake(0, 16, 0, 16);
+    [self.topSearchPill addTarget:self action:@selector(openSearch) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.topSearchPill];
+
+    // 2. Barra POI Rapida a Pillole (Benzina, Parcheggi, Bar, Farmacie)
+    self.poiShelf = [[QuickPOIShelfView alloc] initWithFrame:CGRectMake(24, 76, MIN(420, w - 48), 46)];
+    self.poiShelf.delegate = self;
+    [self.view addSubview:self.poiShelf];
+
+    // 3. Scheda Manovre Smeraldo Stile Waze (Nascosta prima di avviare la navigazione)
+    self.maneuverHUD = [[ManeuverHUDView alloc] initWithFrame:CGRectMake(24, 20, 380, 108)];
+    self.maneuverHUD.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
     self.maneuverHUD.onTapBlock = ^{
         [weakSelf repeatCurrentInstruction];
     };
+    self.maneuverHUD.hidden = YES;
     [self.view addSubview:self.maneuverHUD];
 
-    // Tachimetro in basso a sinistra
-    self.speedometer = [[SpeedometerView alloc] initWithFrame:CGRectMake(20, h - 115, 95, 95)];
+    // 4. Barra di Viaggio Inferiore Stile Google Maps (ETA grande, minuti, km, tasto stop)
+    self.tripBar = [[ModernTripBarView alloc] initWithFrame:CGRectMake(24, h - 86, MIN(440, w - 48), 68)];
+    self.tripBar.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin;
+    self.tripBar.onExitBlock = ^{
+        [weakSelf cancelCurrentRoute];
+    };
+    self.tripBar.hidden = YES;
+    [self.view addSubview:self.tripBar];
+
+    // 5. Tachimetro Circolare Stile Waze in basso a sinistra
+    self.speedometer = [[SpeedometerView alloc] initWithFrame:CGRectMake(24, h - 195, 96, 96)];
     self.speedometer.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin;
     [self.view addSubview:self.speedometer];
 
-    // Etichetta sorgente GPS
-    self.gpsSourceLabel = [[UILabel alloc] initWithFrame:CGRectMake(125, h - 35, 220, 20)];
+    // 6. Etichetta Sorgente GPS
+    self.gpsSourceLabel = [[UILabel alloc] initWithFrame:CGRectMake(132, h - 130, 220, 20)];
     self.gpsSourceLabel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin;
     self.gpsSourceLabel.font = [UIFont boldSystemFontOfSize:11.0];
     self.gpsSourceLabel.textColor = [UIColor colorWithWhite:0.25 alpha:0.85];
-    self.gpsSourceLabel.text = @"GPS: In attesa di fix...";
+    self.gpsSourceLabel.text = @"GPS: In attesa di segnale...";
     [self.view addSubview:self.gpsSourceLabel];
 
-    // Pulsanti in alto a destra: Cerca e POI
-    self.searchButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.searchButton.frame = CGRectMake(w - 135, 20, 115, 46);
-    self.searchButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    self.searchButton.backgroundColor = [UIColor colorWithRed:0.1 green:0.5 blue:1.0 alpha:0.92];
-    self.searchButton.layer.cornerRadius = 14.0;
-    self.searchButton.layer.shadowColor = [[UIColor blackColor] CGColor];
-    self.searchButton.layer.shadowOpacity = 0.4;
-    self.searchButton.layer.shadowRadius = 6.0;
-    self.searchButton.layer.shadowOffset = CGSizeMake(0, 3);
-    [self.searchButton setTitle:@"🔍 Cerca" forState:UIControlStateNormal];
-    [self.searchButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.searchButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
-    [self.searchButton addTarget:self action:@selector(openSearch) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.searchButton];
-
-    self.poiButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.poiButton.frame = CGRectMake(w - 245, 20, 100, 46);
-    self.poiButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    self.poiButton.backgroundColor = [UIColor colorWithRed:0.2 green:0.7 blue:0.4 alpha:0.92];
-    self.poiButton.layer.cornerRadius = 14.0;
-    [self.poiButton setTitle:@"📍 POI" forState:UIControlStateNormal];
-    [self.poiButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.poiButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
-    [self.poiButton addTarget:self action:@selector(togglePOIShelf) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.poiButton];
-
-    // Pulsante Chiudi Rotta
-    self.cancelRouteButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.cancelRouteButton.frame = CGRectMake(w - 180, 76, 160, 42);
-    self.cancelRouteButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    self.cancelRouteButton.backgroundColor = [UIColor colorWithRed:0.85 green:0.2 blue:0.2 alpha:0.92];
-    self.cancelRouteButton.layer.cornerRadius = 12.0;
-    [self.cancelRouteButton setTitle:@"✕ Chiudi Rotta" forState:UIControlStateNormal];
-    [self.cancelRouteButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.cancelRouteButton.titleLabel.font = [UIFont boldSystemFontOfSize:15.0];
-    self.cancelRouteButton.hidden = YES;
-    [self.cancelRouteButton addTarget:self action:@selector(cancelCurrentRoute) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.cancelRouteButton];
-
-    // Pulsanti circolari di controllo in basso a destra
+    // 7. Pulsanti Flottanti (FAB) Circolari in basso a destra
     CGFloat btnY = h - 68;
     CGFloat btnSpacing = 58;
 
-    // 1. Centra e Ruota con bussola
-    self.recenterButton = [self createCircularButtonWithTitle:@"🎯" frame:CGRectMake(w - 68, btnY, 48, 48)];
+    // Centra
+    self.recenterButton = [self createCircularButtonWithTitle:@"🎯" frame:CGRectMake(w - 68, btnY, 50, 50)];
     [self.recenterButton addTarget:self action:@selector(recenterMap) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.recenterButton];
 
-    // 2. Toggle Traffico
-    self.trafficButton = [self createCircularButtonWithTitle:@"🚦" frame:CGRectMake(w - 68 - btnSpacing, btnY, 48, 48)];
+    // Switch 3D / 2D
+    self.view3DButton = [self createCircularButtonWithTitle:@"2D" frame:CGRectMake(w - 68 - btnSpacing, btnY, 50, 50)];
+    [self.view3DButton setTitleColor:[UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0] forState:UIControlStateNormal];
+    self.view3DButton.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+    [self.view3DButton addTarget:self action:@selector(toggle3DMode) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.view3DButton];
+
+    // Toggle Traffico
+    self.trafficButton = [self createCircularButtonWithTitle:@"🚦" frame:CGRectMake(w - 68 - (btnSpacing * 2), btnY, 50, 50)];
     [self.trafficButton addTarget:self action:@selector(toggleTraffic) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.trafficButton];
 
-    // 3. Toggle Tema Notte/Giorno
-    self.themeButton = [self createCircularButtonWithTitle:@"🌙" frame:CGRectMake(w - 68 - (btnSpacing * 2), btnY, 48, 48)];
+    // Toggle Notte / Giorno
+    self.themeButton = [self createCircularButtonWithTitle:@"🌙" frame:CGRectMake(w - 68 - (btnSpacing * 3), btnY, 50, 50)];
     [self.themeButton addTarget:self action:@selector(toggleMapTheme) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.themeButton];
 
-    // 4. Toggle Mute Voce
-    self.muteButton = [self createCircularButtonWithTitle:@"🔊" frame:CGRectMake(w - 68 - (btnSpacing * 3), btnY, 48, 48)];
+    // Toggle Mute Audio
+    self.muteButton = [self createCircularButtonWithTitle:@"🔊" frame:CGRectMake(w - 68 - (btnSpacing * 4), btnY, 50, 50)];
     [self.muteButton addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.muteButton];
 
-    // Barra rapida POI (nascosta di default)
-    self.poiShelf = [[QuickPOIShelfView alloc] initWithFrame:CGRectMake(20, 125, w - 40, 52)];
-    self.poiShelf.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleBottomMargin;
-    self.poiShelf.delegate = self;
-    self.poiShelf.hidden = YES;
-    [self.view addSubview:self.poiShelf];
-
-    // Selettore Itinerari in basso (nascosto di default)
+    // 8. Selettore Itinerari Multipli in basso
     self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(30, h - 195, w - 60, 175)];
     self.routeSelector.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     self.routeSelector.delegate = self;
@@ -213,16 +213,66 @@
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.frame = frame;
     btn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
-    btn.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.88];
+    btn.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.92];
     btn.layer.cornerRadius = frame.size.width / 2.0;
-    btn.layer.borderColor = [[UIColor colorWithWhite:0.35 alpha:0.7] CGColor];
+    btn.layer.borderColor = [[UIColor colorWithWhite:0.35 alpha:0.75] CGColor];
     btn.layer.borderWidth = 1.0;
+    btn.layer.shadowColor = [[UIColor blackColor] CGColor];
+    btn.layer.shadowOpacity = 0.5;
+    btn.layer.shadowRadius = 6.0;
+    btn.layer.shadowOffset = CGSizeMake(0, 3);
     [btn setTitle:title forState:UIControlStateNormal];
     btn.titleLabel.font = [UIFont systemFontOfSize:22.0];
     return btn;
 }
 
-#pragma mark - Azioni e Toggle
+#pragma mark - Gestione Telecamera 3D Prospettica / 2D Pianta (`MKMapCamera`)
+
+- (void)toggle3DMode {
+    self.is3DMode = !self.is3DMode;
+    // Se siamo in 3D, il bottone offre di passare a 2D; se siamo in 2D, offre di passare a 3D
+    [self.view3DButton setTitle:(self.is3DMode ? @"2D" : @"3D") forState:UIControlStateNormal];
+
+    [self applyCameraPerspectiveAnimated:YES];
+
+    NSString *announcement = self.is3DMode ? @"Visuale tridimensionale 3D attivata." : @"Visuale piana 2D a volo d'uccello.";
+    [[VoiceGuidanceService sharedService] speak:announcement];
+}
+
+- (void)applyCameraPerspectiveAnimated:(BOOL)animated {
+    CLLocationCoordinate2D center = self.currentLocation ? self.currentLocation.coordinate : self.mapView.centerCoordinate;
+    CLLocationDirection heading = self.currentHeading;
+
+    if (self.is3DMode) {
+        // Modalità 3D Prospettica Cockpit (stile Waze/Google Maps)
+        double speed = (self.currentLocation && self.currentLocation.speed > 0) ? self.currentLocation.speed : 0;
+        double altitude = 420.0 + (speed * 3.5);
+        altitude = MIN(altitude, 750.0);
+
+        MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:center
+                                                      fromEyeCoordinate:center
+                                                            eyeAltitude:altitude];
+        cam.pitch = 56.0; // Inclinazione tridimensionale 3D
+        cam.heading = heading;
+        [self.mapView setCamera:cam animated:animated];
+    } else {
+        // Modalità 2D Pianta Ortogonale
+        MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:center
+                                                      fromEyeCoordinate:center
+                                                            eyeAltitude:1400.0];
+        cam.pitch = 0.0; // Piatta a 0°
+        cam.heading = heading;
+        [self.mapView setCamera:cam animated:animated];
+    }
+}
+
+- (void)recenterMap {
+    if (self.currentLocation) {
+        [self applyCameraPerspectiveAnimated:YES];
+    }
+}
+
+#pragma mark - Azioni Flottanti
 
 - (void)openSearch {
     SearchViewController *searchVC = [[SearchViewController alloc] init];
@@ -230,16 +280,6 @@
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:searchVC];
     nav.modalPresentationStyle = UIModalPresentationFormSheet;
     [self presentViewController:nav animated:YES completion:nil];
-}
-
-- (void)togglePOIShelf {
-    self.poiShelf.hidden = !self.poiShelf.hidden;
-}
-
-- (void)recenterMap {
-    if (self.currentLocation) {
-        [self.mapView setUserTrackingMode:MKUserTrackingModeFollowWithHeading animated:YES];
-    }
 }
 
 - (void)toggleTraffic {
@@ -273,9 +313,13 @@
 - (void)cancelCurrentRoute {
     self.isNavigating = NO;
     self.routeSelector.hidden = YES;
-    self.cancelRouteButton.hidden = YES;
+    self.tripBar.hidden = YES;
+    self.maneuverHUD.hidden = YES;
 
-    // Rimuovi tutti i percorsi polylines dalla mappa
+    // Ripristina barra di ricerca e POI in alto
+    self.topSearchPill.hidden = NO;
+    self.poiShelf.hidden = NO;
+
     if (self.availableRoutes) {
         for (RouteInfo *r in self.availableRoutes) {
             if (r.polyline) [self.mapView removeOverlay:r.polyline];
@@ -289,6 +333,8 @@
     self.currentRoute = nil;
     [self.maneuverHUD reset];
     [[VoiceGuidanceService sharedService] speak:@"Navigazione terminata."];
+
+    [self applyCameraPerspectiveAnimated:YES];
 }
 
 - (void)repeatCurrentInstruction {
@@ -305,19 +351,18 @@
     if (self.currentLocation) {
         startCoord = self.currentLocation.coordinate;
     } else {
-        startCoord = CLLocationCoordinate2DMake(45.4642, 9.1900); // Default Milano
+        startCoord = CLLocationCoordinate2DMake(45.4642, 9.1900);
     }
 
-    [[VoiceGuidanceService sharedService] speak:@"Ricerca itinerari alternativi e analisi traffico..."];
+    [[VoiceGuidanceService sharedService] speak:@"Ricerca itinerari alternativi e traffico..."];
 
     __weak NavigationViewController *weakSelf = self;
     [[RoutingService sharedService] calculateRoutesFrom:startCoord to:coordinate destinationTitle:title completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
         if (error || routes.count == 0) {
-            [[VoiceGuidanceService sharedService] speak:@"Impossibile calcolare itinerari per questa destinazione."];
+            [[VoiceGuidanceService sharedService] speak:@"Nessun itinerario trovato."];
             return;
         }
 
-        // Pulisci vecchi percorsi
         if (weakSelf.availableRoutes) {
             for (RouteInfo *oldR in weakSelf.availableRoutes) {
                 if (oldR.polyline) [weakSelf.mapView removeOverlay:oldR.polyline];
@@ -328,36 +373,26 @@
         weakSelf.currentRoute = routes[0];
         weakSelf.currentStepIndex = 0;
 
-        // Disegna tutti i percorsi (le alternative e il principale)
         for (RouteInfo *r in routes) {
             if (r.polyline) {
                 [weakSelf.mapView addOverlay:r.polyline level:MKOverlayLevelAboveRoads];
             }
         }
 
-        // Inquadra la rotta principale
         [weakSelf.mapView setVisibleMapRect:routes[0].polyline.boundingMapRect
-                                edgePadding:UIEdgeInsetsMake(120, 60, 210, 60)
+                                edgePadding:UIEdgeInsetsMake(120, 60, 220, 60)
                                    animated:YES];
 
         // Mostra il selettore itinerari
         [weakSelf.routeSelector setRoutes:routes];
         weakSelf.routeSelector.hidden = NO;
-        weakSelf.cancelRouteButton.hidden = NO;
 
-        // Aggiorna HUD
-        if (routes[0].steps.count > 0) {
-            [weakSelf.maneuverHUD updateWithManeuver:routes[0].steps[0] distanceToStep:routes[0].steps[0].distance];
-        }
-        [weakSelf.maneuverHUD updateTripRemainingDistance:routes[0].totalDistance
-                                                 duration:routes[0].totalDuration
-                                            trafficStatus:routes[0].trafficDescription];
+        // Nascondi barre superiori per non ingombrare
+        weakSelf.topSearchPill.hidden = YES;
+        weakSelf.poiShelf.hidden = YES;
 
-        NSString *speakMsg = [NSString stringWithFormat:@"Trovati %lu itinerari. Il più veloce richiede %d minuti, traffico %@.",
-                              (unsigned long)routes.count,
-                              (int)ceil(routes[0].totalDuration / 60.0),
-                              routes[0].trafficDescription];
-        [[VoiceGuidanceService sharedService] speak:speakMsg];
+        NSString *msg = [NSString stringWithFormat:@"Trovati %lu percorsi. Seleziona l'itinerario desiderato.", (unsigned long)routes.count];
+        [[VoiceGuidanceService sharedService] speak:msg];
     }];
 }
 
@@ -369,20 +404,12 @@
     self.currentRoute = self.availableRoutes[index];
     self.currentStepIndex = 0;
 
-    // Ricarica i render per evidenziare il percorso selezionato
     for (RouteInfo *r in self.availableRoutes) {
         if (r.polyline) {
             [self.mapView removeOverlay:r.polyline];
             [self.mapView addOverlay:r.polyline level:MKOverlayLevelAboveRoads];
         }
     }
-
-    if (self.currentRoute.steps.count > 0) {
-        [self.maneuverHUD updateWithManeuver:self.currentRoute.steps[0] distanceToStep:self.currentRoute.steps[0].distance];
-    }
-    [self.maneuverHUD updateTripRemainingDistance:self.currentRoute.totalDistance
-                                             duration:self.currentRoute.totalDuration
-                                        trafficStatus:self.currentRoute.trafficDescription];
 }
 
 - (void)routeSelectorView:(RouteSelectorView *)view didConfirmStartRoute:(RouteInfo *)selectedRoute {
@@ -391,17 +418,28 @@
     self.routeSelector.hidden = YES;
     self.offRouteConsecutiveCount = 0;
 
-    // Rimuovi i percorsi alternativi non scelti per mantenere la mappa pulita
     for (RouteInfo *r in self.availableRoutes) {
         if (r != selectedRoute && r.polyline) {
             [self.mapView removeOverlay:r.polyline];
         }
     }
 
-    // Centra sulla posizione dell'auto con prospettiva 3D
-    [self.mapView setUserTrackingMode:MKUserTrackingModeFollowWithHeading animated:YES];
+    // Mostra HUD di guida in stile Waze e Google Maps
+    self.maneuverHUD.hidden = NO;
+    self.tripBar.hidden = NO;
 
-    NSString *prompt = [NSString stringWithFormat:@"Navigazione avviata verso %@. Inizia a guidare.", self.currentRoute.destinationTitle];
+    if (self.currentRoute.steps.count > 0) {
+        ManeuverStep *step1 = self.currentRoute.steps[0];
+        ManeuverStep *step2 = (self.currentRoute.steps.count > 1) ? self.currentRoute.steps[1] : nil;
+        [self.maneuverHUD updateWithManeuver:step1 distanceToStep:step1.distance nextStep:step2];
+    }
+    [self.tripBar updateRemainingDistance:self.currentRoute.totalDistance
+                                 duration:self.currentRoute.totalDuration
+                            trafficStatus:self.currentRoute.trafficDescription];
+
+    [self applyCameraPerspectiveAnimated:YES];
+
+    NSString *prompt = [NSString stringWithFormat:@"Inizia a guidare verso %@.", self.currentRoute.destinationTitle];
     [[VoiceGuidanceService sharedService] speak:prompt];
 }
 
@@ -409,7 +447,7 @@
     [self cancelCurrentRoute];
 }
 
-#pragma mark - Gestione POI e Annotazioni
+#pragma mark - QuickPOIShelfViewDelegate
 
 - (void)quickPOIShelfView:(QuickPOIShelfView *)shelf didRequestSearchCategory:(NSString *)query categoryName:(NSString *)categoryName {
     CLLocationCoordinate2D center = self.currentLocation ? self.currentLocation.coordinate : CLLocationCoordinate2DMake(45.4642, 9.1900);
@@ -417,25 +455,23 @@
 }
 
 - (void)quickPOIShelfView:(QuickPOIShelfView *)shelf didFindPOIs:(NSArray<MKPointAnnotation *> *)annotations categoryName:(NSString *)category {
-    // Rimuovi vecchi POI
     [self.mapView removeAnnotations:self.poiAnnotations];
     [self.poiAnnotations removeAllObjects];
 
     [self.poiAnnotations addObjectsFromArray:annotations];
     [self.mapView addAnnotations:annotations];
 
-    self.poiShelf.hidden = YES;
     NSString *msg = [NSString stringWithFormat:@"Trovati %lu %@ nelle vicinanze.", (unsigned long)annotations.count, category];
     [[VoiceGuidanceService sharedService] speak:msg];
 }
 
 - (void)quickPOIShelfViewDidRequestClose:(QuickPOIShelfView *)shelf {
-    self.poiShelf.hidden = YES;
+    // Opzionale
 }
 
 - (MKAnnotationView *)mapView:(MKMapView *)mapView viewForAnnotation:(id<MKAnnotation>)annotation {
     if ([annotation isKindOfClass:[MKUserLocation class]]) {
-        return nil; // Usa il puntino blu predefinito per l'utente
+        return nil;
     }
 
     static NSString *poiId = @"POIAnnotation";
@@ -444,7 +480,7 @@
         pin = [[MKPinAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:poiId];
         pin.canShowCallout = YES;
         if ([pin respondsToSelector:@selector(setPinTintColor:)]) {
-            pin.pinTintColor = [UIColor colorWithRed:0.6 green:0.2 blue:0.9 alpha:1.0];
+            pin.pinTintColor = [UIColor colorWithRed:0.0 green:0.55 blue:0.95 alpha:1.0];
         }
         pin.animatesDrop = YES;
 
@@ -487,26 +523,34 @@
     self.currentLocation = location;
     [self.speedometer updateSpeed:location.speed];
 
+    // In modalità 3D e durante la navigazione, la telecamera segue dinamicamente l'auto
+    if (self.is3DMode && self.isNavigating) {
+        [self applyCameraPerspectiveAnimated:YES];
+    }
+
     if (!self.isNavigating || !self.currentRoute) {
         return;
     }
 
-    // 1. Controllo avanzamento manovre
+    // Avanzamento manovre
     if (self.currentStepIndex < self.currentRoute.steps.count) {
         ManeuverStep *targetStep = self.currentRoute.steps[self.currentStepIndex];
         CLLocation *stepLoc = [[CLLocation alloc] initWithLatitude:targetStep.coordinate.latitude
                                                          longitude:targetStep.coordinate.longitude];
         CLLocationDistance dist = [location distanceFromLocation:stepLoc];
 
-        [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:dist];
+        ManeuverStep *nextStep = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
+        [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:dist nextStep:nextStep];
+        [self.tripBar updateRemainingDistance:self.currentRoute.totalDistance duration:self.currentRoute.totalDuration trafficStatus:self.currentRoute.trafficDescription];
+
         [[VoiceGuidanceService sharedService] speakManeuver:targetStep.instruction distanceInMeters:dist];
 
-        // Avanza se entro 35 metri
         if (dist < 35.0 && self.currentStepIndex + 1 < self.currentRoute.steps.count) {
             self.currentStepIndex++;
-            ManeuverStep *nextStep = self.currentRoute.steps[self.currentStepIndex];
-            [self.maneuverHUD updateWithManeuver:nextStep distanceToStep:nextStep.distance];
-            [[VoiceGuidanceService sharedService] speak:nextStep.instruction];
+            ManeuverStep *newStep = self.currentRoute.steps[self.currentStepIndex];
+            ManeuverStep *stepAfter = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
+            [self.maneuverHUD updateWithManeuver:newStep distanceToStep:newStep.distance nextStep:stepAfter];
+            [[VoiceGuidanceService sharedService] speak:newStep.instruction];
             self.offRouteConsecutiveCount = 0;
         } else if (dist < 25.0 && self.currentStepIndex + 1 >= self.currentRoute.steps.count) {
             [[VoiceGuidanceService sharedService] speak:@"Sei arrivato a destinazione."];
@@ -514,10 +558,10 @@
             return;
         }
 
-        // 2. Controllo Fuori Rotta (Off-route Detection)
+        // Controllo Fuori Rotta
         if (dist > 75.0 && self.currentStepIndex > 0) {
             self.offRouteConsecutiveCount++;
-            if (self.offRouteConsecutiveCount >= 4) { // 4 fix consecutivi fuori rotta
+            if (self.offRouteConsecutiveCount >= 4) {
                 [self triggerAutoReroute];
                 self.offRouteConsecutiveCount = 0;
             }
@@ -548,43 +592,40 @@
         [weakSelf.mapView addOverlay:newRoute.polyline level:MKOverlayLevelAboveRoads];
 
         if (newRoute.steps.count > 0) {
-            [weakSelf.maneuverHUD updateWithManeuver:newRoute.steps[0] distanceToStep:newRoute.steps[0].distance];
+            ManeuverStep *step1 = newRoute.steps[0];
+            ManeuverStep *step2 = (newRoute.steps.count > 1) ? newRoute.steps[1] : nil;
+            [weakSelf.maneuverHUD updateWithManeuver:step1 distanceToStep:step1.distance nextStep:step2];
         }
-        [weakSelf.maneuverHUD updateTripRemainingDistance:newRoute.totalDistance
-                                                 duration:newRoute.totalDuration
-                                            trafficStatus:newRoute.trafficDescription];
+        [weakSelf.tripBar updateRemainingDistance:newRoute.totalDistance duration:newRoute.totalDuration trafficStatus:newRoute.trafficDescription];
 
-        [[VoiceGuidanceService sharedService] speak:@"Nuovo percorso calcolato. Prosegui."];
+        [[VoiceGuidanceService sharedService] speak:@"Nuovo percorso pronto. Continua a guidare."];
     }];
 }
 
-#pragma mark - MKMapViewDelegate (Rendering Layer OSM, Traffico e Rotte)
+#pragma mark - MKMapViewDelegate
 
 - (MKOverlayRenderer *)mapView:(MKMapView *)mapView rendererForOverlay:(id<MKOverlay>)overlay {
-    // 1. Layer OpenStreetMap base
     if ([overlay isKindOfClass:[OSMTileOverlay class]]) {
         return [[MKTileOverlayRenderer alloc] initWithTileOverlay:(MKTileOverlay *)overlay];
     }
 
-    // 2. Layer Traffico in tempo reale (trasparente su strade)
     if ([overlay isKindOfClass:[TrafficTileOverlay class]]) {
         MKTileOverlayRenderer *r = [[MKTileOverlayRenderer alloc] initWithTileOverlay:(MKTileOverlay *)overlay];
         r.alpha = 0.85;
         return r;
     }
 
-    // 3. Tracciati Polylines dei Percorsi
     if ([overlay isKindOfClass:[MKPolyline class]]) {
         MKPolylineRenderer *renderer = [[MKPolylineRenderer alloc] initWithPolyline:(MKPolyline *)overlay];
         renderer.lineCap = kCGLineCapRound;
         renderer.lineJoin = kCGLineJoinRound;
 
-        // Se è la rotta attiva/selezionata: Blu brillante spessa
         if (self.currentRoute && overlay == self.currentRoute.polyline) {
+            // Percorso attivo in blu brillante (#007AFF)
             renderer.strokeColor = [UIColor colorWithRed:0.0 green:0.48 blue:1.0 alpha:0.92];
             renderer.lineWidth = 7.5;
         } else {
-            // Rotta alternativa non selezionata: Viola/Grigio semitrasparente
+            // Alternative in viola (#5856D6)
             renderer.strokeColor = [UIColor colorWithRed:0.45 green:0.35 blue:0.85 alpha:0.75];
             renderer.lineWidth = 5.5;
         }
