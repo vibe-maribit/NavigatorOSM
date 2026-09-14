@@ -58,42 +58,54 @@ Una volta avviato Cydia:
 
 ---
 
-## 5. Installazione di NavigatoreOSM da Linux via USB
+## 5. Installazione di NavigatoreOSM via USB (Linux o macOS)
 
-Sul tuo PC Linux abbiamo predisposto lo script automatizzato:
+Sul tuo computer (Linux o Mac) abbiamo predisposto lo script universale:
 
-1. Collega l'iPad Mini con il cavo USB Lightning al PC Linux.
+1. Collega l'iPad Mini con il cavo USB Lightning al computer.
 2. Se sullo schermo dell'iPad compare la richiesta:
    *"Vuoi autorizzare questo computer?"*, tocca **Autorizza** e inserisci il codice di sblocco dell'iPad.
-3. Apri il terminale su Linux ed entra nella cartella del progetto:
+3. Apri il terminale ed entra nella cartella del progetto:
    ```bash
-   cd /home/nicola/Devel/retrofit/iOS/NavigatoreOSM
+   cd /path/to/NavigatoreOSM
    ./install-usb.sh
    ```
 
 ### Cosa fa lo script `install-usb.sh`:
+- Rileva automaticamente se ti trovi su Linux o macOS (`Darwin`).
+- Adatta automaticamente la sintassi (`ideviceinstaller install` su macOS/versioni recenti, `ideviceinstaller -i` su Linux/versioni classiche).
 - Interroga il demone `usbmuxd` tramite `ideviceinfo` per verificare la presenza del tablet.
 - Legge il modello e la versione del sistema operativo (`iPad2,5`, `iOS 9.3.5`).
-- Invia il pacchetto `NavigatoreOSM.ipa` tramite `ideviceinstaller -i`.
-- In circa 5 secondi, l'installazione è completa!
+- Invia il pacchetto `NavigatoreOSM.ipa` (completo di bundle signature `_CodeSignature/CodeResources`).
+- In pochi secondi l'installazione è completata!
 
 L'icona **Navigatore** apparirà istantaneamente sulla schermata Home dell'iPad.
 
 ---
 
-## 6. Risoluzione dei Problemi Comuni USB su Linux
+## 6. Risoluzione dei Problemi Comuni
 
 ### Errore: `ERROR: No device found!`
 1. Verifica che il cavo Lightning sia integro e non solo per la ricarica (deve supportare il passaggio dati).
 2. Prova a scollegare e ricollegare il cavo in un'altra porta USB.
-3. Riavvia il servizio di gestione dispositivi iOS su Linux:
-   ```bash
-   sudo systemctl restart usbmuxd
-   ```
+3. Se su Linux, riavvia il servizio: `sudo systemctl restart usbmuxd`.
 4. Esegui `ideviceinfo` per verificare che risponda correttamente con i dati dell'iPad.
 
 ### Errore: `Device is locked with a passcode`
 Sblocca lo schermo dell'iPad Mini prima di lanciare `./install-usb.sh`.
 
-### Errore: `ApplicationVerificationFailed`
-Significa che l'iPad non ha ancora installato **AppSync Unified** da Cydia. Assicurati di aver seguito il punto 4 di questa guida.
+### Errore: `ApplicationVerificationFailed (0xe800801c / 0xe8008015)`
+Questo errore indica che `installd` di iOS ha rifiutato la firma dell'applicazione:
+
+1. **Se l'iPad È JAILBROKEN**:
+   - Assicurati di aver installato **AppSync Unified** da Cydia (`https://cydia.akemi.ai/`).
+   - Se hai riavviato l'iPad di recente, il jailbreak semi-untethered si disattiva al reboot: apri l'app **Phoenix** o **kok3shi9** sull'iPad e tocca **"Kickstart Jailbreak"** (o "Jailbreak") per riattivare i tweak.
+   - Una volta attivo AppSync Unified, rilancia `./install-usb.sh`.
+
+2. **Se l'iPad NON È JAILBROKEN (iOS originale "stock")**:
+   - Su iOS stock, `installd` rifiuta le app con firma ad-hoc / ldid.
+   - Scarica **Sideloadly** (gratuito per macOS e Windows: [sideloadly.io](https://sideloadly.io)).
+   - Collega l'iPad via USB e apri Sideloadly.
+   - Trascina il file `NavigatoreOSM.ipa` nella finestra di Sideloadly.
+   - Inserisci il tuo Apple ID: Sideloadly firmerà l'IPA con il tuo certificato gratuito di sviluppo e la installerà direttamente sull'iPad in un click!
+
