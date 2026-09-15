@@ -71,9 +71,9 @@
     // Modalità 3D attiva di default (visuale prospettica auto)
     self.is3DMode = YES;
 
-    // 3. Sovrapponi layer OpenStreetMap base
+    // 3. Sovrapponi layer OpenStreetMap base a livello strade
     self.osmOverlay = [[OSMTileOverlay alloc] initWithTheme:OSMMapThemeStandard];
-    [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveLabels];
+    [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
 
     // 4. Layer Traffico in tempo reale
     self.trafficOverlay = [TrafficTileOverlay sharedOverlay];
@@ -307,7 +307,7 @@
     [self.themeButton setTitle:(next == OSMMapThemeDark ? @"☀️" : @"🌙") forState:UIControlStateNormal];
 
     [self.mapView removeOverlay:self.osmOverlay];
-    [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveLabels];
+    [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
 }
 
 - (void)toggleMute {
@@ -411,7 +411,7 @@
 
         for (RouteInfo *r in routes) {
             if (r.polyline) {
-                [weakSelf.mapView addOverlay:r.polyline level:MKOverlayLevelAboveRoads];
+                [weakSelf.mapView addOverlay:r.polyline level:MKOverlayLevelAboveLabels];
             }
         }
 
@@ -443,7 +443,7 @@
     for (RouteInfo *r in self.availableRoutes) {
         if (r.polyline) {
             [self.mapView removeOverlay:r.polyline];
-            [self.mapView addOverlay:r.polyline level:MKOverlayLevelAboveRoads];
+            [self.mapView addOverlay:r.polyline level:MKOverlayLevelAboveLabels];
         }
     }
 }
@@ -458,6 +458,10 @@
         if (r != selectedRoute && r.polyline) {
             [self.mapView removeOverlay:r.polyline];
         }
+    }
+    if (selectedRoute.polyline) {
+        [self.mapView removeOverlay:selectedRoute.polyline];
+        [self.mapView addOverlay:selectedRoute.polyline level:MKOverlayLevelAboveLabels];
     }
 
     // Mostra HUD di guida in stile Waze e Google Maps
@@ -536,6 +540,13 @@
 }
 
 #pragma mark - Gestione Posizione & Ricalcolo Fuori Rotta
+
+- (void)locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
+    if (status == kCLAuthorizationStatusAuthorizedAlways || status == kCLAuthorizationStatusAuthorizedWhenInUse) {
+        [manager startUpdatingLocation];
+        [manager startUpdatingHeading];
+    }
+}
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
     CLLocation *loc = [locations lastObject];
@@ -632,7 +643,7 @@
 
         weakSelf.currentRoute = newRoute;
         weakSelf.currentStepIndex = 0;
-        [weakSelf.mapView addOverlay:newRoute.polyline level:MKOverlayLevelAboveRoads];
+        [weakSelf.mapView addOverlay:newRoute.polyline level:MKOverlayLevelAboveLabels];
 
         if (newRoute.steps.count > 0) {
             ManeuverStep *step1 = newRoute.steps[0];
@@ -664,13 +675,13 @@
         renderer.lineJoin = kCGLineJoinRound;
 
         if (self.currentRoute && overlay == self.currentRoute.polyline) {
-            // Percorso attivo in blu brillante (#007AFF)
-            renderer.strokeColor = [UIColor colorWithRed:0.0 green:0.48 blue:1.0 alpha:0.92];
-            renderer.lineWidth = 7.5;
+            // Percorso attivo in blu elettrico brillante (#007AFF) ad alto contrasto
+            renderer.strokeColor = [UIColor colorWithRed:0.0 green:0.48 blue:1.0 alpha:0.95];
+            renderer.lineWidth = 8.5;
         } else {
-            // Alternative in viola (#5856D6)
-            renderer.strokeColor = [UIColor colorWithRed:0.45 green:0.35 blue:0.85 alpha:0.75];
-            renderer.lineWidth = 5.5;
+            // Alternative in grigio/azzurro (#6C7A89) ben distinguibile
+            renderer.strokeColor = [UIColor colorWithRed:0.45 green:0.52 blue:0.62 alpha:0.80];
+            renderer.lineWidth = 6.0;
         }
         return renderer;
     }

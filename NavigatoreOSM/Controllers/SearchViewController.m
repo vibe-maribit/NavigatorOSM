@@ -53,6 +53,16 @@
     self.searchBar.placeholder = @"Indirizzo, città o luogo...";
     self.searchBar.keyboardAppearance = UIKeyboardAppearanceDark;
     self.searchBar.barTintColor = [UIColor colorWithWhite:0.1 alpha:1.0];
+    self.searchBar.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+
+    // Configura esplicitamente il campo di testo interno per testo bianco brillante
+    UITextField *searchTextField = [self.searchBar valueForKey:@"searchField"];
+    if (searchTextField) {
+        searchTextField.textColor = [UIColor whiteColor];
+        searchTextField.backgroundColor = [UIColor colorWithWhite:0.22 alpha:1.0];
+        searchTextField.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+        searchTextField.font = [UIFont systemFontOfSize:15.0];
+    }
     [topBar addSubview:self.searchBar];
 
     // TableView
