@@ -60,6 +60,12 @@
     self.mapView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.mapView.delegate = self;
     self.mapView.showsUserLocation = YES;
+
+    // Long-press per impostare rapidamente una destinazione toccando la mappa
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapLongPress:)];
+    longPress.minimumPressDuration = 0.6;
+    [self.mapView addGestureRecognizer:longPress];
+
     [self.view addSubview:self.mapView];
 
     // Modalità 3D attiva di default (visuale prospettica auto)
@@ -346,20 +352,50 @@
 
 #pragma mark - Search & Route Calculation (Itinerari Multipli)
 
+- (void)handleMapLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan) return;
+
+    CGPoint point = [gesture locationInView:self.mapView];
+    CLLocationCoordinate2D coord = [self.mapView convertPoint:point toCoordinateFromView:self.mapView];
+
+    // Rimuovi eventuali pin temporanei precedenti
+    [self.mapView removeAnnotations:self.poiAnnotations];
+    [self.poiAnnotations removeAllObjects];
+
+    MKPointAnnotation *pin = [[MKPointAnnotation alloc] init];
+    pin.coordinate = coord;
+    pin.title = @"Destinazione selezionata";
+    [self.poiAnnotations addObject:pin];
+    [self.mapView addAnnotation:pin];
+
+    [self searchViewControllerDidSelectLocation:coord title:@"Punto sulla mappa"];
+}
+
 - (void)searchViewControllerDidSelectLocation:(CLLocationCoordinate2D)coordinate title:(NSString *)title {
     CLLocationCoordinate2D startCoord;
-    if (self.currentLocation) {
+    if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
         startCoord = self.currentLocation.coordinate;
+    } else if (self.mapView.userLocation.location && CLLocationCoordinate2DIsValid(self.mapView.userLocation.location.coordinate) && self.mapView.userLocation.location.coordinate.latitude != 0) {
+        startCoord = self.mapView.userLocation.location.coordinate;
+    } else if (CLLocationCoordinate2DIsValid(self.mapView.centerCoordinate) && self.mapView.centerCoordinate.latitude != 0) {
+        startCoord = self.mapView.centerCoordinate;
     } else {
-        startCoord = CLLocationCoordinate2DMake(45.4642, 9.1900);
+        startCoord = CLLocationCoordinate2DMake(45.4642, 9.1900); // Default Milano
     }
 
+    [self.topSearchPill setTitle:@"  ⏳ Calcolo itinerari in corso..." forState:UIControlStateNormal];
     [[VoiceGuidanceService sharedService] speak:@"Ricerca itinerari alternativi e traffico..."];
 
     __weak NavigationViewController *weakSelf = self;
     [[RoutingService sharedService] calculateRoutesFrom:startCoord to:coordinate destinationTitle:title completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
+        [weakSelf.topSearchPill setTitle:@"  🔍 Cerca destinazione o indirizzo..." forState:UIControlStateNormal];
+
         if (error || routes.count == 0) {
-            [[VoiceGuidanceService sharedService] speak:@"Nessun itinerario trovato."];
+            NSString *errPrompt = @"Impossibile calcolare l'itinerario. Verifica la connessione di rete.";
+            if (error.code == -2) {
+                errPrompt = @"Nessun percorso stradale trovato per questa destinazione.";
+            }
+            [[VoiceGuidanceService sharedService] speak:errPrompt];
             return;
         }
 
@@ -575,7 +611,14 @@
     if (!self.currentRoute) return;
 
     [[VoiceGuidanceService sharedService] speak:@"Ricalcolo del percorso in corso..."];
-    CLLocationCoordinate2D start = self.currentLocation.coordinate;
+    CLLocationCoordinate2D start;
+    if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
+        start = self.currentLocation.coordinate;
+    } else if (self.mapView.userLocation.location && CLLocationCoordinate2DIsValid(self.mapView.userLocation.location.coordinate) && self.mapView.userLocation.location.coordinate.latitude != 0) {
+        start = self.mapView.userLocation.location.coordinate;
+    } else {
+        start = self.mapView.centerCoordinate;
+    }
     CLLocationCoordinate2D dest = self.currentRoute.destinationCoordinate;
     NSString *title = self.currentRoute.destinationTitle;
 
