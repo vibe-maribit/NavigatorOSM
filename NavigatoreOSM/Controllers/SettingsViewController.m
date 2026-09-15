@@ -2,9 +2,8 @@
 #import "Services/NetworkGPSReceiver.h"
 #import "Services/VoiceGuidanceService.h"
 
-@interface SettingsViewController () <UITableViewDataSource, UITableViewDelegate, UITextFieldDelegate>
+@interface SettingsViewController () <UITextFieldDelegate>
 
-@property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, strong) UITextField *portTextField;
 @property (nonatomic, strong) UITextField *ipTextField;
@@ -12,46 +11,34 @@
 @property (nonatomic, strong) UISwitch *voiceSwitch;
 @property (nonatomic, strong) UISegmentedControl *themeSegment;
 
+// Riferimenti diretti ai label diagnostici (aggiornati senza reloadSections!)
+@property (nonatomic, weak) UILabel *diagStatusLabel;
+@property (nonatomic, weak) UILabel *diagLocationLabel;
+
 @end
 
 @implementation SettingsViewController
 
+- (instancetype)init {
+    self = [super initWithStyle:UITableViewStyleGrouped];
+    return self;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Impostazioni";
-    self.view.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
 
-    // Barra superiore con titolo e pulsante Chiudi
-    UIView *topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 64)];
-    topBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    topBar.backgroundColor = [UIColor colorWithWhite:0.16 alpha:1.0];
-    [self.view addSubview:topBar];
+    // === Barra di navigazione nativa di sistema (immune da freeze) ===
+    self.navigationItem.title = @"⚙️ Impostazioni";
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+        initWithTitle:@"✕ Chiudi"
+                style:UIBarButtonItemStyleDone
+               target:self
+               action:@selector(handleClose)];
+    self.navigationItem.rightBarButtonItem.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
 
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, 300, 36)];
-    titleLabel.text = @"⚙️ Impostazioni";
-    titleLabel.textColor = [UIColor whiteColor];
-    titleLabel.font = [UIFont boldSystemFontOfSize:20.0];
-    [topBar addSubview:titleLabel];
-
-    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    closeBtn.frame = CGRectMake(topBar.bounds.size.width - 100, 12, 88, 40);
-    closeBtn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-    closeBtn.backgroundColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:0.9];
-    closeBtn.layer.cornerRadius = 10.0;
-    [closeBtn setTitle:@"✕ Chiudi" forState:UIControlStateNormal];
-    [closeBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15.0];
-    [closeBtn addTarget:self action:@selector(handleClose) forControlEvents:UIControlEventTouchUpInside];
-    [topBar addSubview:closeBtn];
-
-    // TableView raggruppata
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 64, self.view.bounds.size.width, self.view.bounds.size.height - 64) style:UITableViewStyleGrouped];
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    // Stile scuro per la tabella
     self.tableView.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
     self.tableView.separatorColor = [UIColor colorWithWhite:0.22 alpha:1.0];
-    self.tableView.dataSource = self;
-    self.tableView.delegate = self;
-    [self.view addSubview:self.tableView];
 
     // Chiudi tastiera al tocco
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
@@ -61,8 +48,13 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    // Timer per aggiornare la diagnostica live ogni secondo
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(refreshDiagnostics) userInfo:nil repeats:YES];
+    // Timer per aggiornare SOLO i label diagnostici via assegnazione diretta
+    // MAI chiamare reloadSections qui — causa il freeze su iOS 9!
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:1.5
+                                                        target:self
+                                                      selector:@selector(refreshDiagnosticLabels)
+                                                      userInfo:nil
+                                                       repeats:YES];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -71,9 +63,33 @@
     self.refreshTimer = nil;
 }
 
-- (void)refreshDiagnostics {
-    // Ricarica la sezione diagnostica (sezione 0)
-    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone];
+#pragma mark - Aggiornamento Diagnostica (SENZA reloadSections!)
+
+- (void)refreshDiagnosticLabels {
+    // Aggiornamento diretto dei label — NESSUN reload della tabella!
+    NetworkGPSReceiver *gps = [NetworkGPSReceiver sharedReceiver];
+
+    if (self.diagStatusLabel) {
+        NSString *ipLocal = [gps localIPAddress];
+        NSString *status = gps.isRunning ? (gps.isTCPClientMode ? @"Connesso TCP" : @"In ascolto UDP") : @"Fermo";
+        self.diagStatusLabel.text = [NSString stringWithFormat:@"IP iPad: %@ • %@ • Pkt: %lu", ipLocal, status, (unsigned long)gps.packetsReceivedCount];
+        self.diagStatusLabel.textColor = gps.packetsReceivedCount > 0
+            ? [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0]
+            : [UIColor colorWithRed:1.0 green:0.7 blue:0.2 alpha:1.0];
+    }
+
+    if (self.diagLocationLabel) {
+        if (gps.lastLocation) {
+            self.diagLocationLabel.text = [NSString stringWithFormat:@"%.4f, %.4f (±%.0fm)",
+                gps.lastLocation.coordinate.latitude,
+                gps.lastLocation.coordinate.longitude,
+                gps.lastLocation.horizontalAccuracy];
+            self.diagLocationLabel.textColor = [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0];
+        } else {
+            self.diagLocationLabel.text = @"Nessun pacchetto ricevuto";
+            self.diagLocationLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
+        }
+    }
 }
 
 - (void)dismissKeyboard {
@@ -114,7 +130,6 @@
     } else {
         [[NetworkGPSReceiver sharedReceiver] startListeningOnPort:port];
     }
-    [self.tableView reloadData];
 }
 
 - (void)copyCydiaRepoURL {
@@ -129,27 +144,29 @@
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 5;
+    return 6; // 0: Versione, 1: GPS, 2: Cydia, 3: Voce, 4: Mappa, 5: Chiudi
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
-        case 0: return 5; // Ricevitore GPS di Rete (Modalità, Porta, IP Host, Box Diagnostica, Pulsante Applica)
-        case 1: return 2; // Repository Cydia OTA (URL Repo + Pulsante Copia, Istruzioni)
-        case 2: return 1; // Guida Vocale
-        case 3: return 1; // Stile Mappa
-        case 4: return 4; // Info Versione SW & Sistema
+        case 0: return 3; // Versione App, Data Build, Architettura
+        case 1: return 5; // Ricevitore GPS di Rete
+        case 2: return 2; // Repository Cydia OTA
+        case 3: return 1; // Guida Vocale
+        case 4: return 1; // Stile Mappa
+        case 5: return 1; // Pulsante Salva ed Esci
         default: return 0;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
-        case 0: return @"🛰️ RICEVITORE GPS DI RETE (DA SMARTPHONE ANDROID)";
-        case 1: return @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)";
-        case 2: return @"🔊 GUIDA VOCALE";
-        case 3: return @"🗺️ MAPPE & ASPETTO";
-        case 4: return @"ℹ️ INFORMAZIONI SOFTWARE & SISTEMA";
+        case 0: return @"ℹ️ VERSIONE SOFTWARE & SISTEMA";
+        case 1: return @"🛰️ RICEVITORE GPS DI RETE (DA SMARTPHONE ANDROID)";
+        case 2: return @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)";
+        case 3: return @"🔊 GUIDA VOCALE";
+        case 4: return @"🗺️ MAPPE & ASPETTO";
+        case 5: return nil;
         default: return @"";
     }
 }
@@ -169,8 +186,26 @@
 
     NetworkGPSReceiver *gps = [NetworkGPSReceiver sharedReceiver];
 
-    // SEZIONE 0: GPS Rete
+    // SEZIONE 0: Versione Software (PRIMA — subito visibile!)
     if (indexPath.section == 0) {
+        NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.1.0";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"20260915.2";
+
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"Versione Applicazione";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"v%@ (Build %@)", versionStr, buildStr];
+            cell.detailTextLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = @"Data di Compilazione";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = @"Piattaforma";
+            cell.detailTextLabel.text = @"armv7 (32-bit) • iPad Mini 1 (iPad2,5) • iOS 9.3.5";
+        }
+    }
+    // SEZIONE 1: GPS Rete
+    else if (indexPath.section == 1) {
         if (indexPath.row == 0) {
             cell.textLabel.text = @"Protocollo Ricezione";
             if (!self.modeSegment) {
@@ -204,13 +239,17 @@
             }
             cell.accessoryView = self.ipTextField;
         } else if (indexPath.row == 3) {
-            // Box Diagnostica Live
+            // Box Diagnostica Live — aggiornato via refreshDiagnosticLabels (NO reloadSections!)
             cell.textLabel.text = @"Diagnostica Ricezione";
             NSString *ipLocal = [gps localIPAddress];
             NSString *status = gps.isRunning ? (gps.isTCPClientMode ? @"Connesso TCP" : @"In ascolto UDP") : @"Fermo";
             NSString *diag = [NSString stringWithFormat:@"IP iPad: %@ • %@ • Pkt: %lu", ipLocal, status, (unsigned long)gps.packetsReceivedCount];
             cell.detailTextLabel.text = diag;
-            cell.detailTextLabel.textColor = gps.packetsReceivedCount > 0 ? [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.7 blue:0.2 alpha:1.0];
+            cell.detailTextLabel.textColor = gps.packetsReceivedCount > 0
+                ? [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0]
+                : [UIColor colorWithRed:1.0 green:0.7 blue:0.2 alpha:1.0];
+            // Salva il riferimento per aggiornamento diretto
+            self.diagStatusLabel = cell.detailTextLabel;
         } else if (indexPath.row == 4) {
             cell.textLabel.text = @"Ultima Posizione Ricevuta";
             if (gps.lastLocation) {
@@ -223,10 +262,12 @@
                 cell.detailTextLabel.text = @"Nessun pacchetto ricevuto";
                 cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
             }
+            // Salva il riferimento per aggiornamento diretto
+            self.diagLocationLabel = cell.detailTextLabel;
         }
     }
-    // SEZIONE 1: Cydia Repo OTA
-    else if (indexPath.section == 1) {
+    // SEZIONE 2: Cydia Repo OTA
+    else if (indexPath.section == 2) {
         if (indexPath.row == 0) {
             cell.textLabel.text = @"Sorgente Cydia";
             cell.detailTextLabel.text = @"https://vibe-maribit.github.io/NavigatorOSM/";
@@ -239,8 +280,8 @@
             cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.7 alpha:1.0];
         }
     }
-    // SEZIONE 2: Guida Vocale
-    else if (indexPath.section == 2) {
+    // SEZIONE 3: Guida Vocale
+    else if (indexPath.section == 3) {
         cell.textLabel.text = @"Attiva Istruzioni Vocali";
         if (!self.voiceSwitch) {
             self.voiceSwitch = [[UISwitch alloc] init];
@@ -249,8 +290,8 @@
         }
         cell.accessoryView = self.voiceSwitch;
     }
-    // SEZIONE 3: Stile Mappa
-    else if (indexPath.section == 3) {
+    // SEZIONE 4: Stile Mappa
+    else if (indexPath.section == 4) {
         cell.textLabel.text = @"Tema Mappa";
         if (!self.themeSegment) {
             self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[@"Standard", @"Dark", @"Ciclo"]];
@@ -259,26 +300,14 @@
         }
         cell.accessoryView = self.themeSegment;
     }
-    // SEZIONE 4: Info Versione SW & Sistema
-    else if (indexPath.section == 4) {
-        NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.1.0";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"20260915.2";
-
-        if (indexPath.row == 0) {
-            cell.textLabel.text = @"Versione Applicazione";
-            cell.detailTextLabel.text = [NSString stringWithFormat:@"v%@ (Build %@)", versionStr, buildStr];
-            cell.detailTextLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
-        } else if (indexPath.row == 1) {
-            cell.textLabel.text = @"Data di Compilazione";
-            cell.detailTextLabel.text = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
-        } else if (indexPath.row == 2) {
-            cell.textLabel.text = @"Piattaforma & Architettura";
-            cell.detailTextLabel.text = @"armv7 (32-bit) • iPad Mini 1 (iPad2,5)";
-        } else if (indexPath.row == 3) {
-            cell.textLabel.text = @"Sistema Operativo Supportato";
-            cell.detailTextLabel.text = @"iOS 9.3.5 (Build 13G36)";
-        }
+    // SEZIONE 5: Pulsante Salva ed Esci (footer)
+    else if (indexPath.section == 5) {
+        cell.textLabel.text = @"💾 Salva ed Esci";
+        cell.textLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
+        cell.textLabel.font = [UIFont boldSystemFontOfSize:17.0];
+        cell.textLabel.textAlignment = NSTextAlignmentCenter;
+        cell.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+        cell.selectionStyle = UITableViewCellSelectionStyleGray;
     }
 
     return cell;
@@ -286,8 +315,11 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == 1 && indexPath.row == 0) {
+    if (indexPath.section == 2 && indexPath.row == 0) {
         [self copyCydiaRepoURL];
+    }
+    if (indexPath.section == 5 && indexPath.row == 0) {
+        [self handleClose];
     }
 }
 

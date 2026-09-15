@@ -11,8 +11,9 @@
 #import "../Views/ModernTripBarView.h"
 #import "../Views/RouteSelectorView.h"
 #import "../Views/QuickPOIShelfView.h"
+#import "../Views/POIResultsCardView.h"
 
-@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate>
+@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate>
 
 @property (nonatomic, strong) OSMTileOverlay *osmOverlay;
 @property (nonatomic, strong) TrafficTileOverlay *trafficOverlay;
@@ -26,16 +27,19 @@
 @property (nonatomic, strong) SpeedometerView *speedometer;
 @property (nonatomic, strong) RouteSelectorView *routeSelector;
 @property (nonatomic, strong) QuickPOIShelfView *poiShelf;
+@property (nonatomic, strong) POIResultsCardView *poiResultsCard;
 
-// Controlli Flottanti (FAB)
+// Controlli Flottanti (FAB) — Colonna Verticale Collapsible
 @property (nonatomic, strong) UIButton *topSearchPill;
-@property (nonatomic, strong) UIButton *view3DButton;
 @property (nonatomic, strong) UIButton *recenterButton;
+@property (nonatomic, strong) UIButton *toggleToolbarButton;
+@property (nonatomic, strong) UIButton *view3DButton;
 @property (nonatomic, strong) UIButton *trafficButton;
 @property (nonatomic, strong) UIButton *themeButton;
 @property (nonatomic, strong) UIButton *muteButton;
 @property (nonatomic, strong) UIButton *settingsButton;
 @property (nonatomic, strong) UILabel *gpsSourceLabel;
+@property (nonatomic, assign) BOOL toolbarExpanded;
 
 // Stato 3D / 2D e Navigazione
 @property (nonatomic, assign) BOOL is3DMode;
@@ -72,6 +76,7 @@
 
     // Modalità 3D attiva di default (visuale prospettica auto)
     self.is3DMode = YES;
+    self.toolbarExpanded = NO;
 
     // 3. Sovrapponi layer OpenStreetMap base a livello strade
     self.osmOverlay = [[OSMTileOverlay alloc] initWithTheme:OSMMapThemeStandard];
@@ -142,7 +147,7 @@
     [self.topSearchPill addTarget:self action:@selector(openSearch) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.topSearchPill];
 
-    // 2. Barra POI Rapida a Pillole (Benzina, Parcheggi, Bar, Farmacie)
+    // 2. Barra POI Rapida a Pillole (Benzina, Ristoranti, Parcheggi, Bar, Farmacie)
     self.poiShelf = [[QuickPOIShelfView alloc] initWithFrame:CGRectMake(24, 76, MIN(420, w - 48), 46)];
     self.poiShelf.delegate = self;
     [self.view addSubview:self.poiShelf];
@@ -178,41 +183,8 @@
     self.gpsSourceLabel.text = @"GPS: In attesa di segnale...";
     [self.view addSubview:self.gpsSourceLabel];
 
-    // 7. Pulsanti Flottanti (FAB) Circolari in basso a destra
-    CGFloat btnY = h - 68;
-    CGFloat btnSpacing = 58;
-
-    // Centra
-    self.recenterButton = [self createCircularButtonWithTitle:@"🎯" frame:CGRectMake(w - 68, btnY, 50, 50)];
-    [self.recenterButton addTarget:self action:@selector(recenterMap) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.recenterButton];
-
-    // Switch 3D / 2D
-    self.view3DButton = [self createCircularButtonWithTitle:@"2D" frame:CGRectMake(w - 68 - btnSpacing, btnY, 50, 50)];
-    [self.view3DButton setTitleColor:[UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0] forState:UIControlStateNormal];
-    self.view3DButton.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
-    [self.view3DButton addTarget:self action:@selector(toggle3DMode) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.view3DButton];
-
-    // Toggle Traffico
-    self.trafficButton = [self createCircularButtonWithTitle:@"🚦" frame:CGRectMake(w - 68 - (btnSpacing * 2), btnY, 50, 50)];
-    [self.trafficButton addTarget:self action:@selector(toggleTraffic) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.trafficButton];
-
-    // Toggle Notte / Giorno
-    self.themeButton = [self createCircularButtonWithTitle:@"🌙" frame:CGRectMake(w - 68 - (btnSpacing * 3), btnY, 50, 50)];
-    [self.themeButton addTarget:self action:@selector(toggleMapTheme) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.themeButton];
-
-    // Toggle Mute Audio
-    self.muteButton = [self createCircularButtonWithTitle:@"🔊" frame:CGRectMake(w - 68 - (btnSpacing * 4), btnY, 50, 50)];
-    [self.muteButton addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.muteButton];
-
-    // Pulsante Impostazioni ⚙️
-    self.settingsButton = [self createCircularButtonWithTitle:@"⚙️" frame:CGRectMake(w - 68 - (btnSpacing * 5), btnY, 50, 50)];
-    [self.settingsButton addTarget:self action:@selector(openSettings) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.settingsButton];
+    // 7. TOOLBAR VERTICALE COLLAPSIBLE a destra
+    [self setupVerticalToolbar];
 
     // 8. Selettore Itinerari Multipli in basso
     self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(30, h - 195, w - 60, 175)];
@@ -220,6 +192,99 @@
     self.routeSelector.delegate = self;
     self.routeSelector.hidden = YES;
     [self.view addSubview:self.routeSelector];
+
+    // 9. Scheda Risultati POI
+    self.poiResultsCard = [[POIResultsCardView alloc] initWithFrame:CGRectMake(20, h - 170, w - 40, 155)];
+    self.poiResultsCard.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    self.poiResultsCard.delegate = self;
+    [self.view addSubview:self.poiResultsCard];
+}
+
+#pragma mark - Toolbar Verticale Collapsible (◀ / ▶)
+
+- (void)setupVerticalToolbar {
+    CGFloat w = self.view.bounds.size.width;
+    CGFloat btnSize = 50.0;
+    CGFloat rightMargin = 14.0;
+    CGFloat btnX = w - btnSize - rightMargin;
+    CGFloat spacing = 56.0;
+
+    // Il pulsante più in basso è 🎯 (sempre visibile)
+    CGFloat baseY = self.view.bounds.size.height - 68;
+
+    self.recenterButton = [self createCircularButtonWithTitle:@"🎯" frame:CGRectMake(btnX, baseY, btnSize, btnSize)];
+    [self.recenterButton addTarget:self action:@selector(recenterMap) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.recenterButton];
+
+    // Freccia toggle (sempre visibile, sopra 🎯)
+    self.toggleToolbarButton = [self createCircularButtonWithTitle:@"◀" frame:CGRectMake(btnX, baseY - spacing, btnSize, btnSize)];
+    self.toggleToolbarButton.titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+    [self.toggleToolbarButton addTarget:self action:@selector(toggleToolbar) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.toggleToolbarButton];
+
+    // Pulsanti espandibili (nascosti di default)
+    // Ordine dal basso: 2D/3D, 🚦, 🌙, 🔊, ⚙️
+    self.view3DButton = [self createCircularButtonWithTitle:@"2D" frame:CGRectMake(btnX, baseY - spacing * 2, btnSize, btnSize)];
+    [self.view3DButton setTitleColor:[UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0] forState:UIControlStateNormal];
+    self.view3DButton.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+    [self.view3DButton addTarget:self action:@selector(toggle3DMode) forControlEvents:UIControlEventTouchUpInside];
+    self.view3DButton.hidden = YES;
+    self.view3DButton.alpha = 0;
+    [self.view addSubview:self.view3DButton];
+
+    self.trafficButton = [self createCircularButtonWithTitle:@"🚦" frame:CGRectMake(btnX, baseY - spacing * 3, btnSize, btnSize)];
+    [self.trafficButton addTarget:self action:@selector(toggleTraffic) forControlEvents:UIControlEventTouchUpInside];
+    self.trafficButton.hidden = YES;
+    self.trafficButton.alpha = 0;
+    [self.view addSubview:self.trafficButton];
+
+    self.themeButton = [self createCircularButtonWithTitle:@"🌙" frame:CGRectMake(btnX, baseY - spacing * 4, btnSize, btnSize)];
+    [self.themeButton addTarget:self action:@selector(toggleMapTheme) forControlEvents:UIControlEventTouchUpInside];
+    self.themeButton.hidden = YES;
+    self.themeButton.alpha = 0;
+    [self.view addSubview:self.themeButton];
+
+    self.muteButton = [self createCircularButtonWithTitle:@"🔊" frame:CGRectMake(btnX, baseY - spacing * 5, btnSize, btnSize)];
+    [self.muteButton addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
+    self.muteButton.hidden = YES;
+    self.muteButton.alpha = 0;
+    [self.view addSubview:self.muteButton];
+
+    self.settingsButton = [self createCircularButtonWithTitle:@"⚙️" frame:CGRectMake(btnX, baseY - spacing * 6, btnSize, btnSize)];
+    [self.settingsButton addTarget:self action:@selector(openSettings) forControlEvents:UIControlEventTouchUpInside];
+    self.settingsButton.hidden = YES;
+    self.settingsButton.alpha = 0;
+    [self.view addSubview:self.settingsButton];
+}
+
+- (void)toggleToolbar {
+    self.toolbarExpanded = !self.toolbarExpanded;
+    NSArray *expandableButtons = @[self.view3DButton, self.trafficButton, self.themeButton, self.muteButton, self.settingsButton];
+
+    if (self.toolbarExpanded) {
+        // Espandi: mostra tutti i pulsanti con animazione
+        for (UIButton *btn in expandableButtons) {
+            btn.hidden = NO;
+        }
+        [UIView animateWithDuration:0.3 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+            for (UIButton *btn in expandableButtons) {
+                btn.alpha = 1.0;
+            }
+            [self.toggleToolbarButton setTitle:@"▶" forState:UIControlStateNormal];
+        } completion:nil];
+    } else {
+        // Comprimi: nascondi tutti i pulsanti con animazione
+        [UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
+            for (UIButton *btn in expandableButtons) {
+                btn.alpha = 0;
+            }
+            [self.toggleToolbarButton setTitle:@"◀" forState:UIControlStateNormal];
+        } completion:^(BOOL finished) {
+            for (UIButton *btn in expandableButtons) {
+                btn.hidden = YES;
+            }
+        }];
+    }
 }
 
 - (UIButton *)createCircularButtonWithTitle:(NSString *)title frame:(CGRect)frame {
@@ -291,14 +356,25 @@
     SearchViewController *searchVC = [[SearchViewController alloc] init];
     searchVC.delegate = self;
     searchVC.modalPresentationStyle = UIModalPresentationFormSheet;
+    // Passa la posizione corrente per ricerche geolocalizzate
+    if (self.currentLocation) {
+        searchVC.userLocation = self.currentLocation.coordinate;
+    }
     [self presentViewController:searchVC animated:YES completion:nil];
 }
 
 - (void)openSettings {
     SettingsViewController *settingsVC = [[SettingsViewController alloc] init];
     settingsVC.delegate = self;
-    settingsVC.modalPresentationStyle = UIModalPresentationFormSheet;
-    [self presentViewController:settingsVC animated:YES completion:nil];
+    // Wrapper UINavigationController per barra nativa con pulsante Chiudi di sistema
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+    nav.navigationBar.barStyle = UIBarStyleBlack;
+    nav.navigationBar.translucent = NO;
+    nav.navigationBar.barTintColor = [UIColor colorWithWhite:0.16 alpha:1.0];
+    nav.navigationBar.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+    nav.navigationBar.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
+    nav.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)toggleTraffic {
@@ -445,6 +521,31 @@
     }];
 }
 
+#pragma mark - SearchViewControllerDelegate (Show All POIs on Map)
+
+- (void)searchViewControllerDidRequestShowAllPOIs:(NSArray<MKPointAnnotation *> *)annotations categoryName:(NSString *)categoryName {
+    // Rimuovi pin precedenti
+    [self.mapView removeAnnotations:self.poiAnnotations];
+    [self.poiAnnotations removeAllObjects];
+
+    // Aggiungi tutti i pin
+    [self.poiAnnotations addObjectsFromArray:annotations];
+    [self.mapView addAnnotations:annotations];
+
+    // Zoom automatico per inquadrare tutti i POI
+    if (annotations.count > 0) {
+        [self.mapView showAnnotations:annotations animated:YES];
+    }
+
+    // Mostra la scheda risultati POI
+    [self.poiResultsCard showWithAnnotations:annotations
+                                categoryName:categoryName
+                             currentLocation:self.currentLocation];
+
+    NSString *msg = [NSString stringWithFormat:@"Trovati %lu risultati per %@ sulla mappa.", (unsigned long)annotations.count, categoryName];
+    [[VoiceGuidanceService sharedService] speak:msg];
+}
+
 #pragma mark - RouteSelectorViewDelegate
 
 - (void)routeSelectorView:(RouteSelectorView *)view didSelectRouteIndex:(NSUInteger)index {
@@ -481,6 +582,11 @@
     self.maneuverHUD.hidden = NO;
     self.tripBar.hidden = NO;
 
+    // Chiudi la toolbar automaticamente durante la navigazione
+    if (self.toolbarExpanded) {
+        [self toggleToolbar];
+    }
+
     if (self.currentRoute.steps.count > 0) {
         ManeuverStep *step1 = self.currentRoute.steps[0];
         ManeuverStep *step2 = (self.currentRoute.steps.count > 1) ? self.currentRoute.steps[1] : nil;
@@ -514,6 +620,16 @@
     [self.poiAnnotations addObjectsFromArray:annotations];
     [self.mapView addAnnotations:annotations];
 
+    // Zoom automatico per inquadrare tutti i POI trovati
+    if (annotations.count > 0) {
+        [self.mapView showAnnotations:annotations animated:YES];
+    }
+
+    // Mostra la scheda risultati POI con distanze e tasto Naviga
+    [self.poiResultsCard showWithAnnotations:annotations
+                                categoryName:category
+                             currentLocation:self.currentLocation];
+
     NSString *msg = [NSString stringWithFormat:@"Trovati %lu %@ nelle vicinanze.", (unsigned long)annotations.count, category];
     [[VoiceGuidanceService sharedService] speak:msg];
 }
@@ -521,6 +637,15 @@
 - (void)quickPOIShelfViewDidRequestClose:(QuickPOIShelfView *)shelf {
     // Opzionale
 }
+
+#pragma mark - POIResultsCardViewDelegate
+
+- (void)poiResultsCardView:(POIResultsCardView *)card didSelectNavigateToPOI:(MKPointAnnotation *)annotation {
+    // Avvia il calcolo del percorso verso il POI selezionato
+    [self searchViewControllerDidSelectLocation:annotation.coordinate title:annotation.title];
+}
+
+#pragma mark - MKMapViewDelegate (Annotation Views)
 
 - (MKAnnotationView *)mapView:(MKMapView *)mapView viewForAnnotation:(id<MKAnnotation>)annotation {
     if ([annotation isKindOfClass:[MKUserLocation class]]) {
@@ -532,9 +657,6 @@
     if (!pin) {
         pin = [[MKPinAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:poiId];
         pin.canShowCallout = YES;
-        if ([pin respondsToSelector:@selector(setPinTintColor:)]) {
-            pin.pinTintColor = [UIColor colorWithRed:0.0 green:0.55 blue:0.95 alpha:1.0];
-        }
         pin.animatesDrop = YES;
 
         UIButton *rightBtn = [UIButton buttonWithType:UIButtonTypeDetailDisclosure];
@@ -542,6 +664,12 @@
     } else {
         pin.annotation = annotation;
     }
+
+    // Colore pin in base al tipo (verde per POI, rosso per destinazione)
+    if ([pin respondsToSelector:@selector(setPinTintColor:)]) {
+        pin.pinTintColor = [UIColor colorWithRed:0.15 green:0.65 blue:0.35 alpha:1.0];
+    }
+
     return pin;
 }
 
@@ -667,6 +795,12 @@
 
         [[VoiceGuidanceService sharedService] speak:@"Nuovo percorso pronto. Continua a guidare."];
     }];
+}
+
+#pragma mark - SettingsViewControllerDelegate
+
+- (void)settingsViewControllerDidUpdateSettings:(SettingsViewController *)controller {
+    // Le impostazioni sono state salvate
 }
 
 #pragma mark - MKMapViewDelegate

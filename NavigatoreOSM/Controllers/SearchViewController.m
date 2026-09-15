@@ -14,6 +14,7 @@
 @property (nonatomic, strong) NSMutableArray<SearchItem *> *results;
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+@property (nonatomic, assign) BOOL showMapAllButton; // mostra "📍 Mostra tutti sulla mappa"
 @end
 
 @implementation SearchViewController
@@ -24,6 +25,7 @@
     self.view.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
 
     self.results = [NSMutableArray array];
+    self.showMapAllButton = NO;
 
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
     config.HTTPAdditionalHeaders = @{
@@ -145,10 +147,25 @@
 - (void)performSearch:(NSString *)query {
     [self.spinner startAnimating];
     [self.results removeAllObjects];
+    self.showMapAllButton = NO;
     [self.tableView reloadData];
 
     NSString *encoded = [query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
-    NSString *urlString = [NSString stringWithFormat:@"https://nominatim.openstreetmap.org/search?format=json&q=%@&countrycodes=it&limit=15&addressdetails=1", encoded];
+
+    // Se l'utente ha una posizione valida, cerca nei dintorni
+    NSString *urlString;
+    BOOL hasLocation = CLLocationCoordinate2DIsValid(self.userLocation) && self.userLocation.latitude != 0;
+    if (hasLocation) {
+        // Cerca con viewbox centrato sulla posizione corrente (~10km)
+        double delta = 0.09;
+        urlString = [NSString stringWithFormat:
+            @"https://nominatim.openstreetmap.org/search?format=json&q=%@&viewbox=%.4f,%.4f,%.4f,%.4f&bounded=0&limit=15&addressdetails=1",
+            encoded,
+            self.userLocation.longitude - delta, self.userLocation.latitude + delta,
+            self.userLocation.longitude + delta, self.userLocation.latitude - delta];
+    } else {
+        urlString = [NSString stringWithFormat:@"https://nominatim.openstreetmap.org/search?format=json&q=%@&countrycodes=it&limit=15&addressdetails=1", encoded];
+    }
 
     NSURL *url = [NSURL URLWithString:urlString];
     NSURLSessionDataTask *task = [self.session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
@@ -174,19 +191,60 @@
 
         dispatch_async(dispatch_get_main_queue(), ^{
             self.results = newResults;
+            // Mostra il pulsante "Mostra tutti sulla mappa" se ci sono 2+ risultati
+            self.showMapAllButton = (newResults.count >= 2);
             [self.tableView reloadData];
         });
     }];
     [task resume];
 }
 
+#pragma mark - Show All POIs On Map
+
+- (void)showAllResultsOnMap {
+    if (self.results.count == 0) return;
+
+    NSMutableArray<MKPointAnnotation *> *annotations = [NSMutableArray array];
+    for (SearchItem *item in self.results) {
+        MKPointAnnotation *ann = [[MKPointAnnotation alloc] init];
+        ann.coordinate = item.coordinate;
+        NSArray *parts = [item.displayName componentsSeparatedByString:@", "];
+        ann.title = (parts.count > 0) ? parts[0] : item.displayName;
+        ann.subtitle = (parts.count > 1) ? parts[1] : @"";
+        [annotations addObject:ann];
+    }
+
+    NSString *category = self.searchBar.text ?: @"Risultati";
+
+    [self dismissViewControllerAnimated:YES completion:^{
+        if ([self.delegate respondsToSelector:@selector(searchViewControllerDidRequestShowAllPOIs:categoryName:)]) {
+            [self.delegate searchViewControllerDidRequestShowAllPOIs:annotations categoryName:category];
+        }
+    }];
+}
+
 #pragma mark - UITableViewDataSource & Delegate
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.results.count;
+    NSInteger extra = self.showMapAllButton ? 1 : 0;
+    return self.results.count + extra;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    // Prima riga: pulsante "Mostra tutti sulla mappa" (se abilitato)
+    if (self.showMapAllButton && indexPath.row == 0) {
+        UITableViewCell *mapCell = [tableView dequeueReusableCellWithIdentifier:@"MapAllCell"];
+        if (!mapCell) {
+            mapCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"MapAllCell"];
+            mapCell.backgroundColor = [UIColor colorWithRed:0.1 green:0.3 blue:0.55 alpha:1.0];
+            mapCell.textLabel.textColor = [UIColor whiteColor];
+            mapCell.textLabel.font = [UIFont boldSystemFontOfSize:15.0];
+            mapCell.textLabel.textAlignment = NSTextAlignmentCenter;
+        }
+        mapCell.textLabel.text = [NSString stringWithFormat:@"📍 Mostra tutti i %lu risultati sulla mappa", (unsigned long)self.results.count];
+        return mapCell;
+    }
+
     static NSString *cellId = @"SearchCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellId];
     if (!cell) {
@@ -198,7 +256,8 @@
         cell.detailTextLabel.font = [UIFont systemFontOfSize:12.0];
     }
 
-    SearchItem *item = self.results[indexPath.row];
+    NSInteger resultIndex = self.showMapAllButton ? (indexPath.row - 1) : indexPath.row;
+    SearchItem *item = self.results[resultIndex];
     NSArray *parts = [item.displayName componentsSeparatedByString:@", "];
     if (parts.count > 0) {
         cell.textLabel.text = parts[0];
@@ -218,7 +277,14 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    SearchItem *selected = self.results[indexPath.row];
+
+    if (self.showMapAllButton && indexPath.row == 0) {
+        [self showAllResultsOnMap];
+        return;
+    }
+
+    NSInteger resultIndex = self.showMapAllButton ? (indexPath.row - 1) : indexPath.row;
+    SearchItem *selected = self.results[resultIndex];
 
     if ([self.delegate respondsToSelector:@selector(searchViewControllerDidSelectLocation:title:)]) {
         [self.delegate searchViewControllerDidSelectLocation:selected.coordinate title:selected.displayName];

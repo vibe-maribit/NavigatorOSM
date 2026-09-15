@@ -19,7 +19,8 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Views/ModernTripBarView.m \
                       NavigatoreOSM/Views/SpeedometerView.m \
                       NavigatoreOSM/Views/RouteSelectorView.m \
-                      NavigatoreOSM/Views/QuickPOIShelfView.m
+                      NavigatoreOSM/Views/QuickPOIShelfView.m \
+                      NavigatoreOSM/Views/POIResultsCardView.m
 
 NavigatoreOSM_FRAMEWORKS = UIKit Foundation CoreGraphics CoreLocation MapKit AVFoundation
 NavigatoreOSM_CFLAGS = -fobjc-arc -INavigatoreOSM -O2

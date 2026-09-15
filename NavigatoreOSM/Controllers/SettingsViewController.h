@@ -7,7 +7,7 @@
 - (void)settingsViewControllerDidUpdateSettings:(SettingsViewController *)controller;
 @end
 
-@interface SettingsViewController : UIViewController
+@interface SettingsViewController : UITableViewController
 
 @property (nonatomic, weak) id<SettingsViewControllerDelegate> delegate;
 

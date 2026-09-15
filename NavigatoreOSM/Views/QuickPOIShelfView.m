@@ -23,7 +23,7 @@
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 10.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.0 (iPad Mini 1; iOS 9.3.5)"
+            @"User-Agent": @"NavigatoreOSM/1.1 (iPad Mini 1; iOS 9.3.5)"
         };
         _session = [NSURLSession sessionWithConfiguration:config];
 
@@ -38,21 +38,23 @@
 }
 
 - (void)setupButtons {
+    // Query con tag Nominatim corretti (amenity=) invece di q= generico
     NSArray *items = @[
-        @{@"icon": @"⛽", @"title": @"Benzina", @"query": @"distributore"},
-        @{@"icon": @"🅿️", @"title": @"Parcheggi", @"query": @"parcheggio"},
-        @{@"icon": @"☕", @"title": @"Bar", @"query": @"bar cafe"},
-        @{@"icon": @"💊", @"title": @"Farmacie", @"query": @"farmacia"}
+        @{@"icon": @"⛽", @"title": @"Benzina",    @"query": @"fuel",       @"type": @"amenity"},
+        @{@"icon": @"🍕", @"title": @"Ristoranti", @"query": @"restaurant", @"type": @"amenity"},
+        @{@"icon": @"🅿️", @"title": @"Parcheggi",  @"query": @"parking",    @"type": @"amenity"},
+        @{@"icon": @"☕", @"title": @"Bar",         @"query": @"cafe",       @"type": @"amenity"},
+        @{@"icon": @"💊", @"title": @"Farmacie",   @"query": @"pharmacy",   @"type": @"amenity"}
     ];
 
-    CGFloat totalW = self.bounds.size.width - 60;
+    CGFloat totalW = self.bounds.size.width - 50;
     CGFloat btnW = totalW / (CGFloat)items.count;
     CGFloat btnH = self.bounds.size.height - 16;
 
     for (NSUInteger i = 0; i < items.count; i++) {
         NSDictionary *dict = items[i];
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
-        btn.frame = CGRectMake(10 + i * btnW, 8, btnW - 6, btnH);
+        btn.frame = CGRectMake(8 + i * btnW, 8, btnW - 4, btnH);
         btn.backgroundColor = [UIColor colorWithWhite:0.22 alpha:0.85];
         btn.layer.cornerRadius = 10.0;
         btn.layer.borderColor = [[UIColor colorWithWhite:0.4 alpha:0.4] CGColor];
@@ -60,10 +62,13 @@
 
         NSString *text = [NSString stringWithFormat:@"%@ %@", dict[@"icon"], dict[@"title"]];
         [btn setTitle:text forState:UIControlStateNormal];
-        btn.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
+        btn.titleLabel.font = [UIFont boldSystemFontOfSize:11.0];
         [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        btn.titleLabel.adjustsFontSizeToFitWidth = YES;
+        btn.titleLabel.minimumScaleFactor = 0.7;
 
         objc_setAssociatedObject(btn, "poi_query", dict[@"query"], OBJC_ASSOCIATION_COPY_NONATOMIC);
+        objc_setAssociatedObject(btn, "poi_type", dict[@"type"], OBJC_ASSOCIATION_COPY_NONATOMIC);
         objc_setAssociatedObject(btn, "poi_name", dict[@"title"], OBJC_ASSOCIATION_COPY_NONATOMIC);
 
         [btn addTarget:self action:@selector(handlePOITapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -72,7 +77,7 @@
 
     // Bottone chiudi a destra
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    closeBtn.frame = CGRectMake(self.bounds.size.width - 44, 8, 36, btnH);
+    closeBtn.frame = CGRectMake(self.bounds.size.width - 42, 8, 34, btnH);
     closeBtn.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.9];
     closeBtn.layer.cornerRadius = 10.0;
     [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
@@ -102,10 +107,10 @@
 
     // Bounding box di circa 6 km attorno alla posizione
     double delta = 0.06;
-    NSString *encoded = [query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+    // Usa i tag Nominatim corretti: amenity=fuel invece di q=distributore
     NSString *urlString = [NSString stringWithFormat:
-                           @"https://nominatim.openstreetmap.org/search?format=json&q=%@&viewbox=%.4f,%.4f,%.4f,%.4f&bounded=1&limit=12",
-                           encoded, coord.longitude - delta, coord.latitude + delta, coord.longitude + delta, coord.latitude - delta];
+                           @"https://nominatim.openstreetmap.org/search?format=json&amenity=%@&viewbox=%.4f,%.4f,%.4f,%.4f&bounded=1&limit=15",
+                           query, coord.longitude - delta, coord.latitude + delta, coord.longitude + delta, coord.latitude - delta];
 
     NSURL *url = [NSURL URLWithString:urlString];
     NSURLSessionDataTask *task = [self.session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
