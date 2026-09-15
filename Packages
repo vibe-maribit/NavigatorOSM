@@ -6,11 +6,11 @@ Description: Navigatore GPS Nativo per iPad Mini con OpenStreetMap
 Maintainer: Nicola
 Author: Nicola
 Section: Applications
-Version: 1.2.1-2
-Installed-Size: 280
-Filename: ./debs/com.nicola.navigatoreosm_1.2.1-2_iphoneos-arm.deb
-Size: 84690
-MD5sum: 9d1774957ad0eb93f61f555117448839
-SHA1: 0ed15ab73ede7106c5c8164526ae892842539f75
-SHA256: 5b925e57df79d6264b1a95ae4e80318c446902c24e37e940da21db272490a022
+Version: 1.2.2-2
+Installed-Size: 296
+Filename: ./debs/com.nicola.navigatoreosm_1.2.2-2_iphoneos-arm.deb
+Size: 89600
+MD5sum: d32513191804a64cec7aa73f46417148
+SHA1: c9bb52cba60dd50bddf8d0a32951899cf58cc7e2
+SHA256: 1e067b8a3f947b82e9bfad4fc7b3d308d8e12faa59706382be500e7c54b6e0b7
 
