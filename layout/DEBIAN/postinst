@@ -1,0 +1,5 @@
+#!/bin/sh
+# postinst: termina eventuali processi precedenti e aggiorna la cache di SpringBoard
+killall -9 NavigatoreOSM 2>/dev/null || true
+uicache
+exit 0

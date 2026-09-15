@@ -101,6 +101,18 @@
     [self refreshVisualAlert];
 }
 
+- (void)setDynamicSpeedLimit:(int)limit {
+    if (self.speedLimit == limit) return;
+    self.speedLimit = limit;
+    if (limit > 0) {
+        self.limitSignLabel.text = [NSString stringWithFormat:@"%d", limit];
+        self.limitSignView.hidden = NO;
+    } else {
+        self.limitSignView.hidden = YES;
+    }
+    [self refreshVisualAlert];
+}
+
 - (void)updateSpeed:(double)speedInMetersPerSecond {
     if (speedInMetersPerSecond < 0) {
         self.currentKmh = 0;

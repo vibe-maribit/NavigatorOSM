@@ -6,5 +6,6 @@
 
 - (void)updateSpeed:(double)speedInMetersPerSecond;
 - (void)cycleSpeedLimit;
+- (void)setDynamicSpeedLimit:(int)limit;
 
 @end

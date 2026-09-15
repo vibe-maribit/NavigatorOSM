@@ -405,11 +405,46 @@
     [self.muteButton setTitle:(voice.isMuted ? @"🔇" : @"🔊") forState:UIControlStateNormal];
 }
 
+static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
+    if (!roadName || roadName.length == 0) return 50;
+    
+    NSString *upper = [roadName uppercaseString];
+    
+    // Autostrade: A1, A6, A10, A21, AUTOSTRADA... -> 130 km/h
+    if ([upper containsString:@"AUTOSTRADA"]) return 130;
+    NSRegularExpression *motorwayRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bA[0-9]{1,2}\\b" options:0 error:nil];
+    if ([motorwayRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
+        return 130;
+    }
+    
+    // Tangenziali, Raccordi autostradali -> 110 km/h
+    if ([upper containsString:@"TANGENZIALE"] || [upper containsString:@"SUPERSTRADA"] || [upper containsString:@"RACCORDO"]) {
+        return 110;
+    }
+    NSRegularExpression *raRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bRA[0-9]{1,2}\\b" options:0 error:nil];
+    if ([raRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
+        return 110;
+    }
+    
+    // Strade Statali, Regionali, Provinciali -> 90 km/h
+    NSRegularExpression *extraurbanRegex = [NSRegularExpression regularExpressionWithPattern:@"\\b(SS|SR|SP)[0-9]+" options:0 error:nil];
+    if ([extraurbanRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
+        return 90;
+    }
+    if ([upper containsString:@"STATALE"] || [upper containsString:@"PROVINCIALE"] || [upper containsString:@"REGIONALE"]) {
+        return 90;
+    }
+    
+    // Strade urbane (Via, Corso, Viale, Piazza, ecc.) -> 50 km/h
+    return 50;
+}
+
 - (void)cancelCurrentRoute {
     self.isNavigating = NO;
     self.routeSelector.hidden = YES;
     self.tripBar.hidden = YES;
     self.maneuverHUD.hidden = YES;
+    [self.speedometer setDynamicSpeedLimit:0];
 
     // Ripristina barra di ricerca e POI in alto
     self.topSearchPill.hidden = NO;
@@ -726,6 +761,10 @@
         CLLocation *stepLoc = [[CLLocation alloc] initWithLatitude:targetStep.coordinate.latitude
                                                          longitude:targetStep.coordinate.longitude];
         CLLocationDistance dist = [location distanceFromLocation:stepLoc];
+
+        // Aggiorna limite di velocità dinamico in base al tipo di strada attuale
+        int dynamicLimit = DeduceSpeedLimitFromRoadName(targetStep.streetName);
+        [self.speedometer setDynamicSpeedLimit:dynamicLimit];
 
         ManeuverStep *nextStep = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
         [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:dist nextStep:nextStep];

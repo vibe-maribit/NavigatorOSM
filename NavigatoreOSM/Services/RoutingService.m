@@ -218,45 +218,158 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         [results addObject:info];
     }
 
-    // 3. Classificazione Intelligente e calcolo differenziali rispetto al percorso primario
-    if (results.count > 0) {
-        NSTimeInterval minDuration = DBL_MAX;
-        CLLocationDistance minDistance = DBL_MAX;
-        for (RouteInfo *r in results) {
-            if (r.totalDuration < minDuration) minDuration = r.totalDuration;
-            if (r.totalDistance < minDistance) minDistance = r.totalDistance;
-        }
+    [self reindexAndClassifyRoutes:results];
+    return results;
+}
 
-        RouteInfo *primary = results[0];
-        for (NSUInteger i = 0; i < results.count; i++) {
-            RouteInfo *r = results[i];
-            // Assegna badge strategico
-            if (fabs(r.totalDuration - minDuration) < 15.0 && fabs(r.totalDistance - minDistance) < 100.0) {
-                r.badgeTitle = @"⭐ Ottimale";
-            } else if (fabs(r.totalDuration - minDuration) < 15.0) {
-                r.badgeTitle = @"🚀 Più Veloce";
-            } else if (fabs(r.totalDistance - minDistance) < 100.0) {
-                r.badgeTitle = @"🍃 Più Breve";
-            } else {
-                r.badgeTitle = @"⚖️ Alternativa";
-            }
-
-            // Assegna delta
-            if (i == 0) {
-                r.deltaDescription = @"Consigliato";
-            } else {
-                int deltaMins = (int)round((r.totalDuration - primary.totalDuration) / 60.0);
-                double deltaKm = (r.totalDistance - primary.totalDistance) / 1000.0;
-
-                NSString *timeDelta = (deltaMins == 0) ? @"Stesso tempo" : (deltaMins > 0 ? [NSString stringWithFormat:@"+%d min", deltaMins] : [NSString stringWithFormat:@"%d min", deltaMins]);
-                NSString *distDelta = (fabs(deltaKm) < 0.1) ? @"Stessa dist." : (deltaKm > 0 ? [NSString stringWithFormat:@"+%.1f km", deltaKm] : [NSString stringWithFormat:@"%.1f km", deltaKm]);
-
-                r.deltaDescription = [NSString stringWithFormat:@"%@ • %@", timeDelta, distDelta];
-            }
+- (void)appendUniqueRoute:(RouteInfo *)newRoute toRoutes:(NSMutableArray<RouteInfo *> *)routes {
+    if (!newRoute || !newRoute.polyline) return;
+    if (routes.count == 0) {
+        [routes addObject:newRoute];
+        return;
+    }
+    RouteInfo *primary = routes[0];
+    // Scarta se deviazione eccessiva (> 1.7x tempo del percorso primario)
+    if (newRoute.totalDuration > primary.totalDuration * 1.75) {
+        return;
+    }
+    for (RouteInfo *existing in routes) {
+        if (fabs(existing.totalDistance - newRoute.totalDistance) < 250.0 &&
+            fabs(existing.totalDuration - newRoute.totalDuration) < 120.0) {
+            return; // Duplicato
         }
     }
+    [routes addObject:newRoute];
+}
 
-    return results;
+- (void)reindexAndClassifyRoutes:(NSMutableArray<RouteInfo *> *)results {
+    if (results.count == 0) return;
+
+    // Ordina per durata crescente (il più veloce per primo)
+    [results sortUsingComparator:^NSComparisonResult(RouteInfo *r1, RouteInfo *r2) {
+        if (r1.totalDuration < r2.totalDuration) return NSOrderedAscending;
+        if (r1.totalDuration > r2.totalDuration) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+
+    NSTimeInterval minDuration = DBL_MAX;
+    CLLocationDistance minDistance = DBL_MAX;
+    for (RouteInfo *r in results) {
+        if (r.totalDuration < minDuration) minDuration = r.totalDuration;
+        if (r.totalDistance < minDistance) minDistance = r.totalDistance;
+    }
+
+    RouteInfo *primary = results[0];
+    for (NSUInteger i = 0; i < results.count; i++) {
+        RouteInfo *r = results[i];
+        r.routeIndex = i;
+        r.isPrimary = (i == 0);
+
+        // Assegna badge strategico
+        if (fabs(r.totalDuration - minDuration) < 15.0 && fabs(r.totalDistance - minDistance) < 100.0) {
+            r.badgeTitle = @"⭐ Ottimale";
+        } else if (fabs(r.totalDuration - minDuration) < 15.0) {
+            r.badgeTitle = @"🚀 Più Veloce";
+        } else if (fabs(r.totalDistance - minDistance) < 100.0) {
+            r.badgeTitle = @"🍃 Più Breve";
+        } else {
+            r.badgeTitle = (i == 1) ? @"⚖️ Alternativa" : @"🍃 Panoramica";
+        }
+
+        // Assegna delta
+        if (i == 0) {
+            r.deltaDescription = @"Consigliato";
+        } else {
+            int deltaMins = (int)round((r.totalDuration - primary.totalDuration) / 60.0);
+            double deltaKm = (r.totalDistance - primary.totalDistance) / 1000.0;
+
+            NSString *timeDelta = (deltaMins == 0) ? @"Stesso tempo" : (deltaMins > 0 ? [NSString stringWithFormat:@"+%d min", deltaMins] : [NSString stringWithFormat:@"%d min", deltaMins]);
+            NSString *distDelta = (fabs(deltaKm) < 0.1) ? @"Stessa dist." : (deltaKm > 0 ? [NSString stringWithFormat:@"+%.1f km", deltaKm] : [NSString stringWithFormat:@"%.1f km", deltaKm]);
+
+            r.deltaDescription = [NSString stringWithFormat:@"%@ • %@", timeDelta, distDelta];
+        }
+    }
+}
+
+- (void)enrichWithAlternativeCorridors:(NSMutableArray<RouteInfo *> *)routes
+                                 start:(CLLocationCoordinate2D)start
+                           destination:(CLLocationCoordinate2D)destination
+                                 title:(NSString *)title
+                            completion:(void (^)(NSArray<RouteInfo *> *finalRoutes))done {
+    // Se abbiamo già 3 o più itinerari distinti, completiamo subito
+    if (routes.count >= 3) {
+        done(routes);
+        return;
+    }
+
+    double dLat = destination.latitude - start.latitude;
+    double dLon = destination.longitude - start.longitude;
+    double len = sqrt(dLat * dLat + dLon * dLon);
+
+    // Se la distanza lineare è minore di circa 15 km, non ha senso cercare corridoi autostradali alternativi
+    if (len < 0.15) {
+        done(routes);
+        return;
+    }
+
+    double midLat = (start.latitude + destination.latitude) / 2.0;
+    double midLon = (start.longitude + destination.longitude) / 2.0;
+
+    // Vettore perpendicolare normalizzato
+    double pLat = dLon / len;
+    double pLon = -dLat / len;
+
+    // Due corridoi laterali simmetrici (22% della distanza totale)
+    double offset = len * 0.22;
+    CLLocationCoordinate2D via1 = CLLocationCoordinate2DMake(midLat + pLat * offset, midLon + pLon * offset);
+    CLLocationCoordinate2D via2 = CLLocationCoordinate2DMake(midLat - pLat * offset, midLon - pLon * offset);
+
+    dispatch_group_t group = dispatch_group_create();
+
+    // Query Corridoio Laterale 1
+    dispatch_group_enter(group);
+    NSString *via1UrlStr = [NSString stringWithFormat:
+                            @"http://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&annotations=true",
+                            start.longitude, start.latitude,
+                            via1.longitude, via1.latitude,
+                            destination.longitude, destination.latitude];
+    NSURLSessionDataTask *t1 = [self.session dataTaskWithURL:[NSURL URLWithString:via1UrlStr] completionHandler:^(NSData *d1, NSURLResponse *r1, NSError *e1) {
+        if (!e1 && d1) {
+            NSArray<RouteInfo *> *extra1 = [self parseRoutesData:d1 destination:destination title:title error:nil];
+            if (extra1.count > 0) {
+                @synchronized (routes) {
+                    [self appendUniqueRoute:extra1[0] toRoutes:routes];
+                }
+            }
+        }
+        dispatch_group_leave(group);
+    }];
+    [t1 resume];
+
+    // Query Corridoio Laterale 2
+    dispatch_group_enter(group);
+    NSString *via2UrlStr = [NSString stringWithFormat:
+                            @"http://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&annotations=true",
+                            start.longitude, start.latitude,
+                            via2.longitude, via2.latitude,
+                            destination.longitude, destination.latitude];
+    NSURLSessionDataTask *t2 = [self.session dataTaskWithURL:[NSURL URLWithString:via2UrlStr] completionHandler:^(NSData *d2, NSURLResponse *r2, NSError *e2) {
+        if (!e2 && d2) {
+            NSArray<RouteInfo *> *extra2 = [self parseRoutesData:d2 destination:destination title:title error:nil];
+            if (extra2.count > 0) {
+                @synchronized (routes) {
+                    [self appendUniqueRoute:extra2[0] toRoutes:routes];
+                }
+            }
+        }
+        dispatch_group_leave(group);
+    }];
+    [t2 resume];
+
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        [self reindexAndClassifyRoutes:routes];
+        done(routes);
+    });
 }
 
 - (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
@@ -264,8 +377,6 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
             destinationTitle:(NSString *)title
                   completion:(RoutesCompletionBlock)completion {
 
-    // Utilizziamo HTTP porta 80 standard: su iOS 9 i server HTTPS moderni falliscono
-    // per mancanza del supporto TLS 1.3 sul dispositivo. Con HTTP la connessione è immediata.
     NSString *coordsParam = [NSString stringWithFormat:@"%.6f,%.6f;%.6f,%.6f",
                              start.longitude, start.latitude,
                              destination.longitude, destination.latitude];
@@ -278,7 +389,7 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                                @"http://routing.openstreetmap.de/routed-car/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=true&annotations=true",
                                coordsParam];
 
-    NSLog(@"[RoutingService] Richiesta itinerario da (%.4f, %.4f) a (%.4f, %.4f)",
+    NSLog(@"[RoutingService] Richiesta itinerari da (%.4f, %.4f) a (%.4f, %.4f)",
           start.latitude, start.longitude, destination.latitude, destination.longitude);
 
     __weak RoutingService *weakSelf = self;
@@ -286,12 +397,15 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
     NSURLSessionDataTask *task1 = [self.session dataTaskWithURL:primaryUrl completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (!error && data) {
             NSError *parseErr = nil;
-            NSArray<RouteInfo *> *routes = [weakSelf parseRoutesData:data destination:destination title:title error:&parseErr];
-            if (routes.count > 0) {
-                NSLog(@"[RoutingService] Itinerari trovati con server primario: %lu percorsi", (unsigned long)routes.count);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (completion) completion(routes, nil);
-                });
+            NSArray<RouteInfo *> *parsed = [weakSelf parseRoutesData:data destination:destination title:title error:&parseErr];
+            if (parsed.count > 0) {
+                NSMutableArray<RouteInfo *> *routesMut = [parsed mutableCopy];
+                [weakSelf enrichWithAlternativeCorridors:routesMut start:start destination:destination title:title completion:^(NSArray<RouteInfo *> *finalRoutes) {
+                    NSLog(@"[RoutingService] Itinerari finali calcolati: %lu percorsi", (unsigned long)finalRoutes.count);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (completion) completion(finalRoutes, nil);
+                    });
+                }];
                 return;
             }
             NSLog(@"[RoutingService] Server primario ha restituito errore di parsing: %@", parseErr);
@@ -304,12 +418,15 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         NSURLSessionDataTask *task2 = [weakSelf.session dataTaskWithURL:fallbackUrl completionHandler:^(NSData *data2, NSURLResponse *resp2, NSError *err2) {
             if (!err2 && data2) {
                 NSError *parseErr2 = nil;
-                NSArray<RouteInfo *> *routes2 = [weakSelf parseRoutesData:data2 destination:destination title:title error:&parseErr2];
-                if (routes2.count > 0) {
-                    NSLog(@"[RoutingService] Itinerari trovati con server secondario: %lu percorsi", (unsigned long)routes2.count);
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        if (completion) completion(routes2, nil);
-                    });
+                NSArray<RouteInfo *> *parsed2 = [weakSelf parseRoutesData:data2 destination:destination title:title error:&parseErr2];
+                if (parsed2.count > 0) {
+                    NSMutableArray<RouteInfo *> *routesMut2 = [parsed2 mutableCopy];
+                    [weakSelf enrichWithAlternativeCorridors:routesMut2 start:start destination:destination title:title completion:^(NSArray<RouteInfo *> *finalRoutes2) {
+                        NSLog(@"[RoutingService] Itinerari finali secondario: %lu percorsi", (unsigned long)finalRoutes2.count);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if (completion) completion(finalRoutes2, nil);
+                        });
+                    }];
                     return;
                 }
                 NSLog(@"[RoutingService] Server secondario errore parsing: %@", parseErr2);
