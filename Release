@@ -1,0 +1,17 @@
+Origin: NavigatoreOSM Repo
+Label: NavigatoreOSM
+Suite: stable
+Version: 1.1
+Codename: ios
+Architectures: iphoneos-arm
+Components: main
+Description: Repository Cydia Ufficiale per NavigatoreOSM (iPad Mini iOS 9.3.5)
+MD5Sum:
+ 449156cce82426cada3d316a6ba2801c 486 Packages
+ 70fbcd4435f4dfa9b8004d20df844983 368 Packages.bz2
+SHA1:
+ f85a3ff00579505c30c0fb0d725f4f83f3a018c3 486 Packages
+ 082a31adf2d15048cfd8210f56d196d74af1d6d3 368 Packages.bz2
+SHA256:
+ d0406df1fc19a84f209a860ce25d49012c6b668b87a324168d601033d03448f4 486 Packages
+ 3cf2021e2e9e24410dc3fd64b2f0a39893a77f92dda81a3d5f88f961a2b2fb3f 368 Packages.bz2
