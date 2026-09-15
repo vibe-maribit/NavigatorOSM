@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Compilazione NavigatoreOSM (IPA & DEB) con Theos Docker
         run: |
@@ -38,7 +38,7 @@ jobs:
           python3 cydia_repo/update-repo.py
 
       - name: Upload Artifacts iOS
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ios-binaries
           path: |
@@ -51,16 +51,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Compila APK con Gradle
         run: |
@@ -70,7 +67,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ../GPSTether.apk
 
       - name: Upload Artifact Android
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-binary
           path: GPSTether.apk
@@ -81,15 +78,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Scarica Artifacts iOS
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ios-binaries
 
       - name: Scarica Artifact Android
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: android-binary
 
@@ -103,7 +100,7 @@ jobs:
           fi
 
       - name: Crea GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           name: Release ${{ steps.get_version.outputs.TAG }}
@@ -141,25 +138,3 @@ jobs:
             GPSTether.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  deploy-cydia-repo:
-    name: Aggiorna Repository Cydia su GitHub Pages
-    needs: [build-ios]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Scarica Artifacts iOS
-        uses: actions/download-artifact@v3
-        with:
-          name: ios-binaries
-          path: downloaded
-
-      - name: Deploy su GitHub Pages (gh-pages)
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./cydia_repo
-          publish_branch: gh-pages
-          force_orphan: true
