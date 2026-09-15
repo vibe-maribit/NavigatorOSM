@@ -1,9 +1,9 @@
 Package: com.nicola.NavigatoreOSM
 Name: NavigatoreOSM
 Depends: 
-Version: 1.1.0
+Version: 1.2.0
 Architecture: iphoneos-arm
 Description: Navigatore GPS Nativo per iPad Mini con OpenStreetMap
 Maintainer: Nicola
 Author: Nicola
-Section: Navigation
+Section: Applications

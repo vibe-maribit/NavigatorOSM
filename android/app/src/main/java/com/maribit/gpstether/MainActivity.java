@@ -9,6 +9,7 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -24,7 +25,7 @@ import androidx.core.content.ContextCompat;
 
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements GpsTetherService.TetherListener {
 
     private static final int PERMISSION_REQUEST_CODE = 100;
 
@@ -45,14 +46,21 @@ public class MainActivity extends AppCompatActivity {
             GpsTetherService.LocalBinder binder = (GpsTetherService.LocalBinder) service;
             tetherService = binder.getService();
             isBound = true;
-            updateUIState();
+            tetherService.setListener(MainActivity.this);
+            updateUIState(tetherService.isRunning());
+            if (tetherService.getLastLocation() != null) {
+                onLocationUpdated(tetherService.getLastLocation(), tetherService.getPacketsSent());
+            }
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
+            if (tetherService != null) {
+                tetherService.removeListener();
+            }
             tetherService = null;
             isBound = false;
-            updateUIState();
+            updateUIState(false);
         }
     };
 
@@ -66,10 +74,7 @@ public class MainActivity extends AppCompatActivity {
                 float acc = intent.getFloatExtra(GpsTetherService.EXTRA_ACCURACY, 0.0f);
                 long packets = intent.getLongExtra(GpsTetherService.EXTRA_PACKETS, 0);
 
-                tvCoordinates.setText(String.format(Locale.US, "%.5f, %.5f", lat, lon));
-                tvSpeed.setText(String.format(Locale.US, "%.0f km/h", speed * 3.6f));
-                tvAccuracy.setText(String.format(Locale.US, "±%.1f m", acc));
-                tvPackets.setText(String.valueOf(packets));
+                applyLocationToUI(lat, lon, speed, acc, packets);
             }
         }
     };
@@ -114,20 +119,29 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {}
 
         if (isBound) {
+            if (tetherService != null) {
+                tetherService.removeListener();
+            }
             unbindService(serviceConnection);
             isBound = false;
         }
     }
 
     private void onToggleClicked() {
-        if (tetherService != null && tetherService.isRunning()) {
-            // Ferma servizio
+        boolean currentlyRunning = (tetherService != null && tetherService.isRunning());
+
+        if (currentlyRunning) {
+            // Arresta immediatamente
+            btnToggle.setEnabled(false);
+            btnToggle.setText("⏳ ARRESTO IN CORSO...");
+            if (tetherService != null) {
+                tetherService.stopTethering();
+            }
             Intent intent = new Intent(this, GpsTetherService.class);
             stopService(intent);
-            tetherService.stopTethering();
-            updateUIState();
+            updateUIState(false);
         } else {
-            // Avvia servizio
+            // Avvia immediatamente
             if (!hasPermissions()) {
                 checkAndRequestPermissions();
                 return;
@@ -138,6 +152,9 @@ public class MainActivity extends AppCompatActivity {
                 port = Integer.parseInt(etPort.getText().toString().trim());
             } catch (Exception ignored) {}
 
+            btnToggle.setEnabled(false);
+            btnToggle.setText("⏳ AVVIO IN CORSO...");
+
             Intent intent = new Intent(this, GpsTetherService.class);
             intent.putExtra("port", port);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -145,15 +162,45 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 startService(intent);
             }
-            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-            updateUIState();
+
+            // Se il servizio è già bound, avvialo anche direttamente
+            if (tetherService != null) {
+                tetherService.startTethering(port);
+            }
+
+            updateUIState(true);
         }
     }
 
-    private void updateUIState() {
-        boolean isRunning = (tetherService != null && tetherService.isRunning());
+    @Override
+    public void onStateChanged(boolean running) {
+        runOnUiThread(() -> updateUIState(running));
+    }
+
+    @Override
+    public void onLocationUpdated(Location location, long packetsSent) {
+        if (location == null) return;
+        runOnUiThread(() -> applyLocationToUI(
+                location.getLatitude(),
+                location.getLongitude(),
+                location.getSpeed(),
+                location.getAccuracy(),
+                packetsSent
+        ));
+    }
+
+    private void applyLocationToUI(double lat, double lon, float speed, float acc, long packets) {
+        tvCoordinates.setText(String.format(Locale.US, "%.5f, %.5f", lat, lon));
+        tvSpeed.setText(String.format(Locale.US, "%.0f km/h", speed * 3.6f));
+        tvAccuracy.setText(acc > 0 ? String.format(Locale.US, "±%.1f m", acc) : "±-- m");
+        tvPackets.setText(String.valueOf(packets));
+    }
+
+    private void updateUIState(boolean isRunning) {
+        btnToggle.setEnabled(true);
         if (isRunning) {
-            tvStatus.setText("🟢 TRASMISSIONE ATTIVA\n(UDP Broadcast porta " + etPort.getText() + " + Server TCP)");
+            String portStr = etPort.getText().toString().trim();
+            tvStatus.setText("🟢 TRASMISSIONE ATTIVA\n(UDP Broadcast porta " + portStr + " + Server TCP)");
             tvStatus.setTextColor(Color.parseColor("#00E676"));
             btnToggle.setText("⏹ ARRESTA TRASMISSIONE");
             btnToggle.setBackgroundColor(Color.parseColor("#D50000"));
@@ -169,7 +216,8 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean hasPermissions() {
         boolean fineLoc = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        return fineLoc;
+        boolean coarseLoc = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        return fineLoc || coarseLoc;
     }
 
     private void checkAndRequestPermissions() {
@@ -199,6 +247,8 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Permessi GPS concessi!", Toast.LENGTH_SHORT).show();
+            } else if (hasPermissions()) {
+                Toast.makeText(this, "Posizione approssimativa concessa.", Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "Permesso GPS necessario per il tethering!", Toast.LENGTH_LONG).show();
             }

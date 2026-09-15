@@ -138,3 +138,21 @@ jobs:
             GPSTether.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-cydia-pages:
+    name: Deploy Cydia Repo su GitHub Pages
+    needs: [build-ios, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica Artifacts iOS
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-binaries
+
+      - name: Deploy su branch gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./cydia_repo
+          publish_branch: gh-pages
+          force_orphan: false

@@ -8,17 +8,23 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.ServiceCompat;
+
+import java.util.List;
 
 public class GpsTetherService extends Service implements LocationListener {
 
@@ -34,17 +40,38 @@ public class GpsTetherService extends Service implements LocationListener {
     public static final String EXTRA_BEARING = "bearing";
     public static final String EXTRA_PACKETS = "packets";
 
+    public interface TetherListener {
+        void onStateChanged(boolean running);
+        void onLocationUpdated(Location location, long packetsSent);
+    }
+
     private final IBinder binder = new LocalBinder();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private LocationManager locationManager;
     private PowerManager.WakeLock wakeLock;
     private GpsBroadcaster broadcaster;
-    private boolean isRunning = false;
+    private volatile boolean isRunning = false;
     private Location lastLocation = null;
+    private TetherListener listener = null;
 
     public class LocalBinder extends Binder {
         public GpsTetherService getService() {
             return GpsTetherService.this;
         }
+    }
+
+    public void setListener(TetherListener listener) {
+        this.listener = listener;
+        if (listener != null) {
+            listener.onStateChanged(isRunning);
+            if (lastLocation != null) {
+                listener.onLocationUpdated(lastLocation, getPacketsSent());
+            }
+        }
+    }
+
+    public void removeListener() {
+        this.listener = null;
     }
 
     @Override
@@ -67,7 +94,7 @@ public class GpsTetherService extends Service implements LocationListener {
     }
 
     @SuppressLint("MissingPermission")
-    public void startTethering(int port) {
+    public synchronized void startTethering(int port) {
         if (isRunning) return;
         isRunning = true;
 
@@ -78,27 +105,86 @@ public class GpsTetherService extends Service implements LocationListener {
         broadcaster = new GpsBroadcaster(port);
         broadcaster.start();
 
-        startForeground(NOTIFICATION_ID, buildNotification("In attesa di segnale GPS satellitare..."));
+        Notification notification = buildNotification("In attesa di segnale GPS satellitare...");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
 
+        // 1. Controlla subito se c'è un'ultima posizione nota nella cache di sistema
+        queryAndEmitLastKnownLocation();
+
+        // 2. Registra tutti i provider disponibili per massima reattività
+        registerLocationListeners();
+
+        // Notifica listener dello stato attivo
+        notifyStateChanged(true);
+
+        Log.i(TAG, "GpsTetherService avviato su porta " + port);
+    }
+
+    @SuppressLint("MissingPermission")
+    private void queryAndEmitLastKnownLocation() {
+        if (locationManager == null) return;
         try {
-            // Richiedi posizione GPS ad alta frequenza (500 ms)
+            Location best = null;
+            List<String> providers = locationManager.getAllProviders();
+            for (String provider : providers) {
+                try {
+                    Location l = locationManager.getLastKnownLocation(provider);
+                    if (l != null) {
+                        if (best == null || l.getTime() > best.getTime() || (l.hasAccuracy() && l.getAccuracy() < best.getAccuracy())) {
+                            best = l;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (best != null) {
+                Log.i(TAG, "Trovata ultima posizione nota (" + best.getProvider() + "): " + best.getLatitude() + ", " + best.getLongitude());
+                onLocationChanged(best);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Errore recupero lastKnownLocation: " + e.getMessage());
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void registerLocationListeners() {
+        if (locationManager == null) return;
+        try {
+            // GPS Provider (satellitare di precisione)
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0.0f, this);
             }
-            // Fallback su provider di rete per avvio immediato
+            // Network Provider (celle/Wi-Fi veloce all'avvio)
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000, 0.0f, this);
             }
-            Log.i(TAG, "LocationListener registrato con successo");
+            // Passive Provider (intercetta posizioni generate da altre app come Google Maps)
+            if (locationManager.getAllProviders().contains(LocationManager.PASSIVE_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, 500, 0.0f, this);
+            }
+            // Fused Provider su Android 12+ (API 31+) se disponibile
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (locationManager.getAllProviders().contains("fused")) {
+                    locationManager.requestLocationUpdates("fused", 500, 0.0f, this);
+                }
+            }
+            Log.i(TAG, "LocationListeners registrati su tutti i provider attivi");
         } catch (Exception e) {
             Log.e(TAG, "Errore registrazione LocationManager: " + e.getMessage());
         }
     }
 
-    public void stopTethering() {
+    public synchronized void stopTethering() {
+        if (!isRunning) return;
         isRunning = false;
+
         try {
-            locationManager.removeUpdates(this);
+            if (locationManager != null) {
+                locationManager.removeUpdates(this);
+            }
         } catch (Exception ignored) {}
 
         if (broadcaster != null) {
@@ -111,6 +197,7 @@ public class GpsTetherService extends Service implements LocationListener {
         }
 
         stopForeground(true);
+        notifyStateChanged(false);
         stopSelf();
         Log.i(TAG, "GpsTetherService arrestato");
     }
@@ -124,24 +211,45 @@ public class GpsTetherService extends Service implements LocationListener {
             broadcaster.broadcastLocation(loc);
         }
 
+        long packets = broadcaster != null ? broadcaster.getPacketsSent() : 0;
+
         // Aggiorna notifica persistente
         double speedKmh = loc.getSpeed() * 3.6;
-        String statusText = String.format("Velocità: %.0f km/h • Trasmessi: %d pacchetti",
-                speedKmh, broadcaster != null ? broadcaster.getPacketsSent() : 0);
+        String statusText = String.format("Velocità: %.0f km/h • Trasmessi: %d pacchetti", speedKmh, packets);
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null) {
+        if (nm != null && isRunning) {
             nm.notify(NOTIFICATION_ID, buildNotification(statusText));
         }
 
-        // Trasmetti broadcast locale per aggiornare MainActivity
+        // 1. Notifica diretta al listener (MainActivity) sul Main Thread
+        if (listener != null) {
+            mainHandler.post(() -> {
+                if (listener != null) {
+                    listener.onLocationUpdated(loc, packets);
+                }
+            });
+        }
+
+        // 2. Broadcast esplicito di backup (con setPackage per Android 14+)
         Intent intent = new Intent(ACTION_LOCATION_UPDATE);
+        intent.setPackage(getPackageName());
         intent.putExtra(EXTRA_LAT, loc.getLatitude());
         intent.putExtra(EXTRA_LON, loc.getLongitude());
         intent.putExtra(EXTRA_SPEED, loc.getSpeed());
         intent.putExtra(EXTRA_ACCURACY, loc.getAccuracy());
         intent.putExtra(EXTRA_BEARING, loc.getBearing());
-        intent.putExtra(EXTRA_PACKETS, broadcaster != null ? broadcaster.getPacketsSent() : 0);
+        intent.putExtra(EXTRA_PACKETS, packets);
         sendBroadcast(intent);
+    }
+
+    private void notifyStateChanged(boolean running) {
+        if (listener != null) {
+            mainHandler.post(() -> {
+                if (listener != null) {
+                    listener.onStateChanged(running);
+                }
+            });
+        }
     }
 
     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
