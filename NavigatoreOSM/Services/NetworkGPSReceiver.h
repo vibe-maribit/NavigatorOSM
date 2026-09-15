@@ -21,6 +21,10 @@
 
 + (instancetype)sharedReceiver;
 
+// Avvia con le impostazioni persistenti memorizzate
+- (void)startWithSavedSettings;
+- (void)saveSettings;
+
 // Avvia ricevitore UDP (predefinito, in ascolto su broadcast porta 8888)
 - (void)startListeningOnPort:(NSInteger)port;
 

@@ -5,6 +5,13 @@
 @property (nonatomic, strong) AVSpeechSynthesisVoice *italianVoice;
 @property (nonatomic, copy) NSString *lastSpokenPhrase;
 @property (nonatomic, strong) NSDate *lastSpokenTime;
+
+// Checkpoint per la manovra attualmente tracciata
+@property (nonatomic, assign) NSUInteger trackedStepIndex;
+@property (nonatomic, assign) BOOL didSpeak1000m;
+@property (nonatomic, assign) BOOL didSpeak500m;
+@property (nonatomic, assign) BOOL didSpeak200m;
+@property (nonatomic, assign) BOOL didSpeakNow;
 @end
 
 @implementation VoiceGuidanceService
@@ -25,6 +32,7 @@
         _synthesizer.delegate = self;
         _italianVoice = [AVSpeechSynthesisVoice voiceWithLanguage:@"it-IT"];
         _isMuted = NO;
+        _trackedStepIndex = NSNotFound;
     }
     return self;
 }
@@ -35,47 +43,83 @@
     }
 }
 
+- (void)resetManeuverTracking {
+    self.trackedStepIndex = NSNotFound;
+    self.didSpeak1000m = NO;
+    self.didSpeak500m = NO;
+    self.didSpeak200m = NO;
+    self.didSpeakNow = NO;
+    [self stopSpeaking];
+}
+
 - (void)speak:(NSString *)text {
     if (self.isMuted || !text || text.length == 0) return;
 
-    // Evita di ripetere la medesima frase negli ultimi 8 secondi
-    if ([text isEqualToString:self.lastSpokenPhrase] &&
-        self.lastSpokenTime &&
-        [[NSDate date] timeIntervalSinceDate:self.lastSpokenTime] < 8.0) {
-        return;
+    // Throttle globale: evita qualsiasi ripetizione della stessa frase entro 15 secondi
+    // e non sovrapporre frasi diverse a meno di 4 secondi l'una dall'altra
+    NSDate *now = [NSDate date];
+    if (self.lastSpokenTime) {
+        NSTimeInterval elapsed = [now timeIntervalSinceDate:self.lastSpokenTime];
+        if ([text isEqualToString:self.lastSpokenPhrase] && elapsed < 15.0) {
+            return;
+        }
+        if (elapsed < 3.5 && self.synthesizer.isSpeaking) {
+            return;
+        }
     }
 
     [self stopSpeaking];
 
     self.lastSpokenPhrase = text;
-    self.lastSpokenTime = [NSDate date];
+    self.lastSpokenTime = now;
 
     AVSpeechUtterance *utterance = [AVSpeechUtterance speechUtteranceWithString:text];
     utterance.voice = self.italianVoice;
-    utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95; // Leggermente più scandita per l'auto
+    utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95; // Scandita per la guida
     utterance.pitchMultiplier = 1.0;
     utterance.volume = 1.0;
 
     [self.synthesizer speakUtterance:utterance];
 }
 
-- (void)speakManeuver:(NSString *)instruction distanceInMeters:(double)distance {
-    if (self.isMuted) return;
+- (void)speakManeuver:(NSString *)instruction distanceInMeters:(double)distance stepIndex:(NSUInteger)stepIndex {
+    if (self.isMuted || !instruction || instruction.length == 0) return;
 
-    NSString *phrase = nil;
-    if (distance > 800) {
-        phrase = [NSString stringWithFormat:@"Tra circa un chilometro, %@", [instruction lowercaseString]];
-    } else if (distance > 350) {
-        phrase = [NSString stringWithFormat:@"Tra 500 metri, %@", [instruction lowercaseString]];
-    } else if (distance > 150) {
-        phrase = [NSString stringWithFormat:@"Tra 200 metri, %@", [instruction lowercaseString]];
-    } else if (distance > 30) {
-        phrase = [NSString stringWithFormat:@"Ora %@", [instruction lowercaseString]];
-    } else {
-        phrase = instruction;
+    // Se siamo passati a una nuova manovra, resetta i checkpoint per il nuovo step
+    if (self.trackedStepIndex != stepIndex) {
+        self.trackedStepIndex = stepIndex;
+        self.didSpeak1000m = NO;
+        self.didSpeak500m = NO;
+        self.didSpeak200m = NO;
+        self.didSpeakNow = NO;
     }
 
-    [self speak:phrase];
+    // Logica checkpoint rigorosa: ogni avviso viene pronunciato ESATTAMENTE UNA VOLTA per manovra
+    if (distance > 750 && distance <= 1200) {
+        if (!self.didSpeak1000m) {
+            self.didSpeak1000m = YES;
+            [self speak:[NSString stringWithFormat:@"Tra circa un chilometro, %@", [instruction lowercaseString]]];
+        }
+    } else if (distance > 350 && distance <= 600) {
+        if (!self.didSpeak500m) {
+            self.didSpeak500m = YES;
+            [self speak:[NSString stringWithFormat:@"Tra 500 metri, %@", [instruction lowercaseString]]];
+        }
+    } else if (distance > 100 && distance <= 250) {
+        if (!self.didSpeak200m) {
+            self.didSpeak200m = YES;
+            [self speak:[NSString stringWithFormat:@"Tra 200 metri, %@", [instruction lowercaseString]]];
+        }
+    } else if (distance <= 45 && distance > 10) {
+        if (!self.didSpeakNow) {
+            self.didSpeakNow = YES;
+            [self speak:[NSString stringWithFormat:@"Ora, %@", [instruction lowercaseString]]];
+        }
+    }
+}
+
+- (void)speakManeuver:(NSString *)instruction distanceInMeters:(double)distance {
+    [self speakManeuver:instruction distanceInMeters:distance stepIndex:0];
 }
 
 @end

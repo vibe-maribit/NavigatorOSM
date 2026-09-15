@@ -13,4 +13,8 @@
 @property (nonatomic, weak) id<SearchViewControllerDelegate> delegate;
 @property (nonatomic, assign) CLLocationCoordinate2D userLocation;
 
++ (void)saveRecentDestinationWithTitle:(NSString *)title coordinate:(CLLocationCoordinate2D)coordinate;
++ (NSArray<NSDictionary *> *)recentDestinations;
++ (void)clearRecentDestinations;
+
 @end

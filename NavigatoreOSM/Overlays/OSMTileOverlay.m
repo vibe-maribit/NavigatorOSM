@@ -10,11 +10,14 @@
 static NSString *URLTemplateForTheme(OSMMapTheme theme) {
     switch (theme) {
         case OSMMapThemeDark:
-            return @"https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png";
-        case OSMMapThemeVoyager:
-            return @"https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
+            // Esri World Dark Gray Base: sfondo scuro perfetto per guida notturna, 100% gratuito e NESSUNA API key richiesta!
+            return @"https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+        case OSMMapThemeSatellite:
+            // Esri World Imagery: satellite fotografico ad alta definizione globale, 100% gratuito e NESSUNA API key richiesta!
+            return @"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
         case OSMMapThemeStandard:
         default:
+            // OpenStreetMap Standard ufficiale
             return @"https://tile.openstreetmap.org/{z}/{x}/{y}.png";
     }
 }
@@ -33,18 +36,28 @@ static NSString *URLTemplateForTheme(OSMMapTheme theme) {
         self.minimumZ = 3;
         self.tileSize = CGSizeMake(256, 256);
 
-        // Prepara la sessione HTTP con User-Agent appropriato
+        // Prepara la sessione HTTP con User-Agent identificativo conforme alla Tile Policy OSM
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.0 (iPad Mini 1; iOS 9.3.5)"
+            @"User-Agent": @"NavigatoreOSM/1.2 (iPad Mini 1; iOS 9.3.5; OSM Navigation Client)"
         };
         config.timeoutIntervalForRequest = 10.0;
         _session = [NSURLSession sessionWithConfiguration:config];
 
-        // Prepara la cartella cache su disco
+        // Prepara la cartella cache su disco ed elimina eventuali vecchie tile Carto con watermark
         NSString *baseCache = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
         _cacheDirectory = [baseCache stringByAppendingPathComponent:@"OSMTiles"];
         [[NSFileManager defaultManager] createDirectoryAtPath:_cacheDirectory withIntermediateDirectories:YES attributes:nil error:nil];
+
+        // Pulizia una tantum della vecchia cartella dark/voyager di Carto
+        NSString *oldDark = [_cacheDirectory stringByAppendingPathComponent:@"dark"];
+        NSString *oldVoyager = [_cacheDirectory stringByAppendingPathComponent:@"voyager"];
+        if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DidClearOldCartoWatermarkCache_v12"]) {
+            [[NSFileManager defaultManager] removeItemAtPath:oldDark error:nil];
+            [[NSFileManager defaultManager] removeItemAtPath:oldVoyager error:nil];
+            [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"DidClearOldCartoWatermarkCache_v12"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
     }
     return self;
 }
@@ -57,9 +70,20 @@ static NSString *URLTemplateForTheme(OSMMapTheme theme) {
 }
 
 - (NSString *)tileFilePathForPath:(MKTileOverlayPath)path theme:(OSMMapTheme)theme {
-    NSString *themeName = (theme == OSMMapThemeDark) ? @"dark" : ((theme == OSMMapThemeVoyager) ? @"voyager" : @"standard");
-    return [self.cacheDirectory stringByAppendingFormat:@"/%@/%ld/%ld/%ld.png",
-            themeName, (long)path.z, (long)path.x, (long)path.y];
+    NSString *themeName;
+    NSString *ext;
+    if (theme == OSMMapThemeDark) {
+        themeName = @"dark_esri";
+        ext = @"jpg";
+    } else if (theme == OSMMapThemeSatellite) {
+        themeName = @"satellite_esri";
+        ext = @"jpg";
+    } else {
+        themeName = @"standard";
+        ext = @"png";
+    }
+    return [self.cacheDirectory stringByAppendingFormat:@"/%@/%ld/%ld/%ld.%@",
+            themeName, (long)path.z, (long)path.x, (long)path.y, ext];
 }
 
 - (void)loadTileAtPath:(MKTileOverlayPath)path result:(void (^)(NSData *tileData, NSError *error))result {

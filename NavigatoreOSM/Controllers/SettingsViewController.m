@@ -99,19 +99,31 @@
 - (void)handleClose {
     [self.view endEditing:YES];
 
-    // Salva impostazioni porta
+    NetworkGPSReceiver *gps = [NetworkGPSReceiver sharedReceiver];
+
     NSInteger port = [self.portTextField.text integerValue];
     if (port > 0) {
-        [NetworkGPSReceiver sharedReceiver].port = port;
-        [[NSUserDefaults standardUserDefaults] setInteger:port forKey:@"GPS_Port"];
+        gps.port = port;
     }
 
-    NSString *ip = self.ipTextField.text;
+    NSString *ip = [self.ipTextField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (ip.length > 0) {
-        [NetworkGPSReceiver sharedReceiver].tcpHost = ip;
-        [[NSUserDefaults standardUserDefaults] setObject:ip forKey:@"GPS_TCP_Host"];
+        gps.tcpHost = ip;
     }
 
+    if (self.modeSegment) {
+        gps.isTCPClientMode = (self.modeSegment.selectedSegmentIndex == 1);
+    }
+
+    if (self.themeSegment) {
+        [[NSUserDefaults standardUserDefaults] setInteger:self.themeSegment.selectedSegmentIndex forKey:@"MapThemeIndex"];
+    }
+    if (self.voiceSwitch) {
+        [VoiceGuidanceService sharedService].isMuted = !self.voiceSwitch.isOn;
+    }
+
+    [gps saveSettings];
+    [gps startWithSavedSettings];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
     if ([self.delegate respondsToSelector:@selector(settingsViewControllerDidUpdateSettings:)]) {
@@ -121,14 +133,15 @@
 }
 
 - (void)applyGPSModeChange:(UISegmentedControl *)sender {
-    BOOL isTCP = (sender.selectedSegmentIndex == 1);
-    NSInteger port = [self.portTextField.text integerValue] ?: 8888;
-    NSString *host = self.ipTextField.text.length > 0 ? self.ipTextField.text : @"192.168.43.1";
+    NetworkGPSReceiver *gps = [NetworkGPSReceiver sharedReceiver];
+    gps.isTCPClientMode = (sender.selectedSegmentIndex == 1);
+    NSInteger port = [self.portTextField.text integerValue] ?: gps.port;
+    NSString *host = self.ipTextField.text.length > 0 ? self.ipTextField.text : gps.tcpHost;
 
-    if (isTCP) {
-        [[NetworkGPSReceiver sharedReceiver] connectToTCPServer:host port:port];
+    if (gps.isTCPClientMode) {
+        [gps connectToTCPServer:host port:port];
     } else {
-        [[NetworkGPSReceiver sharedReceiver] startListeningOnPort:port];
+        [gps startListeningOnPort:port];
     }
 }
 
@@ -189,8 +202,8 @@
     // SEZIONE 0: Versione Software (PRIMA — subito visibile!)
     if (indexPath.section == 0) {
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.2.1";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"20260915.5";
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.2.2";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"20260916.1";
 
         if (indexPath.row == 0) {
             cell.textLabel.text = @"Versione Applicazione";
@@ -292,10 +305,10 @@
     }
     // SEZIONE 4: Stile Mappa
     else if (indexPath.section == 4) {
-        cell.textLabel.text = @"Tema Mappa";
+        cell.textLabel.text = @"Stile Mappa";
         if (!self.themeSegment) {
-            self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[@"Standard", @"Dark", @"Ciclo"]];
-            self.themeSegment.selectedSegmentIndex = 0;
+            self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[@"Giorno", @"Notte", @"Satellite"]];
+            self.themeSegment.selectedSegmentIndex = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
             self.themeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
         }
         cell.accessoryView = self.themeSegment;

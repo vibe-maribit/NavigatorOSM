@@ -49,6 +49,8 @@
 @property (nonatomic, assign) BOOL isNavigating;
 @property (nonatomic, assign) NSInteger offRouteConsecutiveCount;
 @property (nonatomic, strong) NSMutableArray<MKPointAnnotation *> *poiAnnotations;
+@property (nonatomic, strong) MKPointAnnotation *destinationPin;
+@property (nonatomic, assign) NSUInteger currentRouteRequestId;
 
 @end
 
@@ -102,9 +104,9 @@
     [self.locationManager startUpdatingLocation];
     [self.locationManager startUpdatingHeading];
 
-    // 6. Ricevitore GPS di rete (UDP 8888) per tethering da Android
+    // 6. Ricevitore GPS di rete (UDP o TCP) per tethering da Android con impostazioni persistenti
     [NetworkGPSReceiver sharedReceiver].delegate = self;
-    [[NetworkGPSReceiver sharedReceiver] startListeningOnPort:8888];
+    [[NetworkGPSReceiver sharedReceiver] startWithSavedSettings];
 
     self.poiAnnotations = [NSMutableArray array];
 
@@ -391,18 +393,74 @@
 }
 
 - (void)toggleMapTheme {
-    OSMMapTheme next = (self.osmOverlay.theme == OSMMapThemeStandard) ? OSMMapThemeDark : OSMMapThemeStandard;
-    [self.osmOverlay switchTheme:next];
-    [self.themeButton setTitle:(next == OSMMapThemeDark ? @"☀️" : @"🌙") forState:UIControlStateNormal];
+    OSMMapTheme current = self.osmOverlay.theme;
+    OSMMapTheme next;
+    if (self.mapView.mapType == MKMapTypeHybrid) {
+        next = OSMMapThemeStandard;
+    } else if (current == OSMMapThemeStandard) {
+        next = OSMMapThemeDark;
+    } else if (current == OSMMapThemeDark) {
+        next = OSMMapThemeSatellite;
+    } else {
+        next = OSMMapThemeStandard;
+    }
 
-    [self.mapView removeOverlay:self.osmOverlay];
-    [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
+    if (next == OSMMapThemeSatellite) {
+        [self.mapView removeOverlay:self.osmOverlay];
+        self.mapView.mapType = MKMapTypeHybrid;
+        [self.themeButton setTitle:@"☀️" forState:UIControlStateNormal];
+        [[VoiceGuidanceService sharedService] speak:@"Modalità satellite attivata."];
+    } else if (next == OSMMapThemeDark) {
+        self.mapView.mapType = MKMapTypeStandard;
+        [self.osmOverlay switchTheme:OSMMapThemeDark];
+        [self.mapView removeOverlay:self.osmOverlay];
+        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
+        [self.themeButton setTitle:@"🛰️" forState:UIControlStateNormal];
+        [[VoiceGuidanceService sharedService] speak:@"Modalità notturna attivata."];
+    } else {
+        self.mapView.mapType = MKMapTypeStandard;
+        [self.osmOverlay switchTheme:OSMMapThemeStandard];
+        [self.mapView removeOverlay:self.osmOverlay];
+        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
+        [self.themeButton setTitle:@"🌙" forState:UIControlStateNormal];
+        [[VoiceGuidanceService sharedService] speak:@"Mappa standard attivata."];
+    }
 }
 
 - (void)toggleMute {
     VoiceGuidanceService *voice = [VoiceGuidanceService sharedService];
     voice.isMuted = !voice.isMuted;
     [self.muteButton setTitle:(voice.isMuted ? @"🔇" : @"🔊") forState:UIControlStateNormal];
+}
+
+static double DistanceFromCoordinateToPolyline(CLLocationCoordinate2D coord, MKPolyline *polyline) {
+    if (!polyline || polyline.pointCount == 0) return 0.0;
+    MKMapPoint p = MKMapPointForCoordinate(coord);
+    NSUInteger count = polyline.pointCount;
+    MKMapPoint *pts = polyline.points;
+
+    double minDistance = DBL_MAX;
+    for (NSUInteger i = 0; i < count - 1; i++) {
+        MKMapPoint a = pts[i];
+        MKMapPoint b = pts[i+1];
+        double dx = b.x - a.x;
+        double dy = b.y - a.y;
+        double lenSq = dx * dx + dy * dy;
+        MKMapPoint closest;
+        if (lenSq == 0.0) {
+            closest = a;
+        } else {
+            double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+            if (t < 0.0) t = 0.0;
+            else if (t > 1.0) t = 1.0;
+            closest = MKMapPointMake(a.x + t * dx, a.y + t * dy);
+        }
+        double d = MKMetersBetweenMapPoints(p, closest);
+        if (d < minDistance) {
+            minDistance = d;
+        }
+    }
+    return minDistance;
 }
 
 static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
@@ -440,6 +498,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 }
 
 - (void)cancelCurrentRoute {
+    self.currentRouteRequestId++;
     self.isNavigating = NO;
     self.routeSelector.hidden = YES;
     self.tripBar.hidden = YES;
@@ -450,18 +509,30 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     self.topSearchPill.hidden = NO;
     self.poiShelf.hidden = NO;
 
-    if (self.availableRoutes) {
-        for (RouteInfo *r in self.availableRoutes) {
-            if (r.polyline) [self.mapView removeOverlay:r.polyline];
+    // Rimuovi TUTTE le polylines dalla mappa per garantire una pulizia perfetta
+    for (id<MKOverlay> overlay in [self.mapView.overlays copy]) {
+        if ([overlay isKindOfClass:[MKPolyline class]]) {
+            [self.mapView removeOverlay:overlay];
         }
     }
-    if (self.currentRoute && self.currentRoute.polyline) {
-        [self.mapView removeOverlay:self.currentRoute.polyline];
+
+    // Rimuovi pin destinazione e annotazioni temporanee
+    if (self.destinationPin) {
+        [self.mapView removeAnnotation:self.destinationPin];
+        self.destinationPin = nil;
+    }
+    if (self.poiAnnotations.count > 0) {
+        [self.mapView removeAnnotations:self.poiAnnotations];
+        [self.poiAnnotations removeAllObjects];
     }
 
     self.availableRoutes = nil;
     self.currentRoute = nil;
+    self.currentStepIndex = 0;
+    self.offRouteConsecutiveCount = 0;
+
     [self.maneuverHUD reset];
+    [[VoiceGuidanceService sharedService] resetManeuverTracking];
     [[VoiceGuidanceService sharedService] speak:@"Navigazione terminata."];
 
     [self applyCameraPerspectiveAnimated:YES];
@@ -496,6 +567,9 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 }
 
 - (void)searchViewControllerDidSelectLocation:(CLLocationCoordinate2D)coordinate title:(NSString *)title {
+    NSUInteger thisRequestId = ++self.currentRouteRequestId;
+    [SearchViewController saveRecentDestinationWithTitle:title coordinate:coordinate];
+
     CLLocationCoordinate2D startCoord;
     if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
         startCoord = self.currentLocation.coordinate;
@@ -508,10 +582,15 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     }
 
     [self.topSearchPill setTitle:@"  ⏳ Calcolo itinerari in corso..." forState:UIControlStateNormal];
-    [[VoiceGuidanceService sharedService] speak:@"Ricerca itinerari alternativi e traffico..."];
+    [[VoiceGuidanceService sharedService] speak:@"Ricerca itinerari alternativi..."];
 
     __weak NavigationViewController *weakSelf = self;
     [[RoutingService sharedService] calculateRoutesFrom:startCoord to:coordinate destinationTitle:title completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
+        if (!weakSelf || weakSelf.currentRouteRequestId != thisRequestId) {
+            NSLog(@"[NavigationViewController] Itinerario scartato: richiesta annullata o superata.");
+            return;
+        }
+
         [weakSelf.topSearchPill setTitle:@"  🔍 Cerca destinazione o indirizzo..." forState:UIControlStateNormal];
 
         if (error || routes.count == 0) {
@@ -523,11 +602,21 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
             return;
         }
 
-        if (weakSelf.availableRoutes) {
-            for (RouteInfo *oldR in weakSelf.availableRoutes) {
-                if (oldR.polyline) [weakSelf.mapView removeOverlay:oldR.polyline];
+        // Pulisci overlay precedenti
+        for (id<MKOverlay> overlay in [weakSelf.mapView.overlays copy]) {
+            if ([overlay isKindOfClass:[MKPolyline class]]) {
+                [weakSelf.mapView removeOverlay:overlay];
             }
         }
+
+        // Imposta pin di destinazione
+        if (weakSelf.destinationPin) {
+            [weakSelf.mapView removeAnnotation:weakSelf.destinationPin];
+        }
+        weakSelf.destinationPin = [[MKPointAnnotation alloc] init];
+        weakSelf.destinationPin.coordinate = coordinate;
+        weakSelf.destinationPin.title = title ?: @"Destinazione";
+        [weakSelf.mapView addAnnotation:weakSelf.destinationPin];
 
         weakSelf.availableRoutes = routes;
         weakSelf.currentRoute = routes[0];
@@ -755,53 +844,68 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         return;
     }
 
-    // Avanzamento manovre
+    // Avanzamento manovre e tracciamento percorso
     if (self.currentStepIndex < self.currentRoute.steps.count) {
         ManeuverStep *targetStep = self.currentRoute.steps[self.currentStepIndex];
         CLLocation *stepLoc = [[CLLocation alloc] initWithLatitude:targetStep.coordinate.latitude
                                                          longitude:targetStep.coordinate.longitude];
-        CLLocationDistance dist = [location distanceFromLocation:stepLoc];
+        CLLocationDistance distToStep = [location distanceFromLocation:stepLoc];
 
         // Aggiorna limite di velocità dinamico in base al tipo di strada attuale
         int dynamicLimit = DeduceSpeedLimitFromRoadName(targetStep.streetName);
         [self.speedometer setDynamicSpeedLimit:dynamicLimit];
 
+        // Calcolo dinamico reale della distanza rimanente verso destinazione (countdown continuo!)
+        CLLocationDistance remainingDist = distToStep;
+        for (NSUInteger i = self.currentStepIndex + 1; i < self.currentRoute.steps.count; i++) {
+            remainingDist += self.currentRoute.steps[i].distance;
+        }
+
+        NSTimeInterval remainingDuration = 0;
+        if (self.currentRoute.totalDistance > 0) {
+            remainingDuration = self.currentRoute.totalDuration * (remainingDist / self.currentRoute.totalDistance);
+        }
+
         ManeuverStep *nextStep = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
-        [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:dist nextStep:nextStep];
-        [self.tripBar updateRemainingDistance:self.currentRoute.totalDistance duration:self.currentRoute.totalDuration trafficStatus:self.currentRoute.trafficDescription];
+        [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:distToStep nextStep:nextStep];
+        [self.tripBar updateRemainingDistance:remainingDist duration:remainingDuration trafficStatus:self.currentRoute.trafficDescription];
 
-        [[VoiceGuidanceService sharedService] speakManeuver:targetStep.instruction distanceInMeters:dist];
+        // Istruzioni vocali discrete con checkpoint (1000m, 500m, 200m, Ora)
+        [[VoiceGuidanceService sharedService] speakManeuver:targetStep.instruction distanceInMeters:distToStep stepIndex:self.currentStepIndex];
 
-        if (dist < 35.0 && self.currentStepIndex + 1 < self.currentRoute.steps.count) {
+        // Avanzamento manovra al raggiungimento dell'incrocio/svolta
+        if (distToStep < 30.0 && self.currentStepIndex + 1 < self.currentRoute.steps.count) {
             self.currentStepIndex++;
             ManeuverStep *newStep = self.currentRoute.steps[self.currentStepIndex];
             ManeuverStep *stepAfter = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
             [self.maneuverHUD updateWithManeuver:newStep distanceToStep:newStep.distance nextStep:stepAfter];
-            [[VoiceGuidanceService sharedService] speak:newStep.instruction];
             self.offRouteConsecutiveCount = 0;
-        } else if (dist < 25.0 && self.currentStepIndex + 1 >= self.currentRoute.steps.count) {
+        } else if (distToStep < 25.0 && self.currentStepIndex + 1 >= self.currentRoute.steps.count) {
             [[VoiceGuidanceService sharedService] speak:@"Sei arrivato a destinazione."];
             [self cancelCurrentRoute];
             return;
         }
 
-        // Controllo Fuori Rotta
-        if (dist > 75.0 && self.currentStepIndex > 0) {
+        // Rilevamento Fuori Rotta intelligente basato sulla distanza perpendicolare dalla polyline del percorso
+        double distToPolyline = DistanceFromCoordinateToPolyline(location.coordinate, self.currentRoute.polyline);
+        if (distToPolyline > 65.0 && (location.speed < 0 || location.speed > 1.2)) {
             self.offRouteConsecutiveCount++;
             if (self.offRouteConsecutiveCount >= 4) {
                 [self triggerAutoReroute];
                 self.offRouteConsecutiveCount = 0;
             }
-        } else {
+        } else if (distToPolyline <= 45.0) {
             self.offRouteConsecutiveCount = 0;
         }
     }
 }
 
 - (void)triggerAutoReroute {
-    if (!self.currentRoute) return;
+    if (!self.isNavigating || !self.currentRoute) return;
 
+    NSUInteger thisRequestId = ++self.currentRouteRequestId;
     [[VoiceGuidanceService sharedService] speak:@"Ricalcolo del percorso in corso..."];
+
     CLLocationCoordinate2D start;
     if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
         start = self.currentLocation.coordinate;
@@ -815,10 +919,17 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
     __weak NavigationViewController *weakSelf = self;
     [[RoutingService sharedService] calculateRouteFrom:start to:dest destinationTitle:title completion:^(RouteInfo *newRoute, NSError *error) {
+        if (!weakSelf || weakSelf.currentRouteRequestId != thisRequestId || !weakSelf.isNavigating) {
+            NSLog(@"[NavigationViewController] Ricalcolo percorso scartato: richiesta annullata o obsoleta.");
+            return;
+        }
         if (error || !newRoute) return;
 
-        if (weakSelf.currentRoute && weakSelf.currentRoute.polyline) {
-            [weakSelf.mapView removeOverlay:weakSelf.currentRoute.polyline];
+        // Rimuovi polylines precedenti
+        for (id<MKOverlay> overlay in [weakSelf.mapView.overlays copy]) {
+            if ([overlay isKindOfClass:[MKPolyline class]]) {
+                [weakSelf.mapView removeOverlay:overlay];
+            }
         }
 
         weakSelf.currentRoute = newRoute;
@@ -832,6 +943,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         }
         [weakSelf.tripBar updateRemainingDistance:newRoute.totalDistance duration:newRoute.totalDuration trafficStatus:newRoute.trafficDescription];
 
+        [[VoiceGuidanceService sharedService] resetManeuverTracking];
         [[VoiceGuidanceService sharedService] speak:@"Nuovo percorso pronto. Continua a guidare."];
     }];
 }
@@ -839,7 +951,27 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 #pragma mark - SettingsViewControllerDelegate
 
 - (void)settingsViewControllerDidUpdateSettings:(SettingsViewController *)controller {
-    // Le impostazioni sono state salvate
+    NSInteger themeIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
+    if (themeIdx == 2) {
+        // Satellite
+        [self.mapView removeOverlay:self.osmOverlay];
+        self.mapView.mapType = MKMapTypeHybrid;
+        [self.themeButton setTitle:@"☀️" forState:UIControlStateNormal];
+    } else if (themeIdx == 1) {
+        // Notte (Esri Dark Canvas)
+        self.mapView.mapType = MKMapTypeStandard;
+        [self.osmOverlay switchTheme:OSMMapThemeDark];
+        [self.mapView removeOverlay:self.osmOverlay];
+        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
+        [self.themeButton setTitle:@"🛰️" forState:UIControlStateNormal];
+    } else {
+        // Giorno (OSM Standard)
+        self.mapView.mapType = MKMapTypeStandard;
+        [self.osmOverlay switchTheme:OSMMapThemeStandard];
+        [self.mapView removeOverlay:self.osmOverlay];
+        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
+        [self.themeButton setTitle:@"🌙" forState:UIControlStateNormal];
+    }
 }
 
 #pragma mark - MKMapViewDelegate

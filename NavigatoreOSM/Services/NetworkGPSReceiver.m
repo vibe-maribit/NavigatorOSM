@@ -30,15 +30,39 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _port = 8888;
-        _tcpHost = @"192.168.43.1";
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSInteger savedPort = [defaults integerForKey:@"GPS_Port"];
+        _port = (savedPort > 0) ? savedPort : 8888;
+
+        NSString *savedHost = [defaults stringForKey:@"GPS_TCP_Host"];
+        _tcpHost = (savedHost && savedHost.length > 0) ? [savedHost copy] : @"192.168.43.1";
+
+        _isTCPClientMode = [defaults boolForKey:@"GPS_IsTCPClientMode"];
+
         _socketFd = -1;
         _isRunning = NO;
-        _isTCPClientMode = NO;
         _packetsReceivedCount = 0;
         _lastSenderIP = @"N/D";
     }
     return self;
+}
+
+- (void)saveSettings {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setInteger:self.port forKey:@"GPS_Port"];
+    if (self.tcpHost) {
+        [defaults setObject:self.tcpHost forKey:@"GPS_TCP_Host"];
+    }
+    [defaults setBool:self.isTCPClientMode forKey:@"GPS_IsTCPClientMode"];
+    [defaults synchronize];
+}
+
+- (void)startWithSavedSettings {
+    if (self.isTCPClientMode) {
+        [self connectToTCPServer:self.tcpHost port:self.port];
+    } else {
+        [self startListeningOnPort:self.port];
+    }
 }
 
 #pragma mark - Gestione Ricevitore UDP Broadcast
@@ -50,6 +74,7 @@
 
     self.isTCPClientMode = NO;
     self.port = port;
+    [self saveSettings];
     _socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (_socketFd < 0) {
         NSLog(@"[NetworkGPSReceiver] Impossibile creare socket UDP");
@@ -123,6 +148,7 @@
     self.isTCPClientMode = YES;
     self.tcpHost = host;
     self.port = port;
+    [self saveSettings];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         int sock = socket(AF_INET, SOCK_STREAM, 0);

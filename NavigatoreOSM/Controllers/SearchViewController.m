@@ -3,10 +3,13 @@
 @interface SearchItem : NSObject
 @property (nonatomic, copy) NSString *displayName;
 @property (nonatomic, assign) CLLocationCoordinate2D coordinate;
+@property (nonatomic, assign) BOOL isRecent;
 @end
 
 @implementation SearchItem
 @end
+
+static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinations";
 
 @interface SearchViewController () <UISearchBarDelegate, UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UISearchBar *searchBar;
@@ -15,9 +18,55 @@
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @property (nonatomic, assign) BOOL showMapAllButton; // mostra "📍 Mostra tutti sulla mappa"
+@property (nonatomic, assign) BOOL showingRecents;
 @end
 
 @implementation SearchViewController
+
++ (NSArray<NSDictionary *> *)recentDestinations {
+    NSArray *recents = [[NSUserDefaults standardUserDefaults] arrayForKey:kRecentDestinationsKey];
+    return recents ?: @[];
+}
+
++ (void)saveRecentDestinationWithTitle:(NSString *)title coordinate:(CLLocationCoordinate2D)coordinate {
+    if (!title || title.length == 0 || !CLLocationCoordinate2DIsValid(coordinate)) return;
+
+    NSMutableArray *recents = [[self recentDestinations] mutableCopy];
+
+    // Rimuovi duplicati vicini (< 250m) o con lo stesso titolo
+    NSMutableArray *toRemove = [NSMutableArray array];
+    for (NSDictionary *dict in recents) {
+        double lat = [dict[@"lat"] doubleValue];
+        double lon = [dict[@"lon"] doubleValue];
+        NSString *existingTitle = dict[@"title"] ?: @"";
+        if ([existingTitle isEqualToString:title] ||
+            (fabs(lat - coordinate.latitude) < 0.0025 && fabs(lon - coordinate.longitude) < 0.0025)) {
+            [toRemove addObject:dict];
+        }
+    }
+    [recents removeObjectsInArray:toRemove];
+
+    NSDictionary *newEntry = @{
+        @"title": title,
+        @"lat": @(coordinate.latitude),
+        @"lon": @(coordinate.longitude),
+        @"timestamp": @([[NSDate date] timeIntervalSince1970])
+    };
+    [recents insertObject:newEntry atIndex:0];
+
+    // Mantieni al massimo 15 destinazioni recenti
+    while (recents.count > 15) {
+        [recents removeLastObject];
+    }
+
+    [[NSUserDefaults standardUserDefaults] setObject:recents forKey:kRecentDestinationsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
++ (void)clearRecentDestinations {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kRecentDestinationsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -26,10 +75,11 @@
 
     self.results = [NSMutableArray array];
     self.showMapAllButton = NO;
+    self.showingRecents = NO;
 
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
     config.HTTPAdditionalHeaders = @{
-        @"User-Agent": @"NavigatoreOSM/1.1 (iPad Mini 1; iOS 9.3.5)"
+        @"User-Agent": @"NavigatoreOSM/1.2 (iPad Mini 1; iOS 9.3.5)"
     };
     self.session = [NSURLSession sessionWithConfiguration:config];
 
@@ -91,7 +141,25 @@
     [self.view addSubview:self.spinner];
 
     [self styleSearchField];
+    [self loadRecentItems];
     [self.searchBar becomeFirstResponder];
+}
+
+- (void)loadRecentItems {
+    [self.spinner stopAnimating];
+    [self.results removeAllObjects];
+    self.showMapAllButton = NO;
+
+    NSArray *recents = [SearchViewController recentDestinations];
+    for (NSDictionary *dict in recents) {
+        SearchItem *item = [[SearchItem alloc] init];
+        item.displayName = dict[@"title"] ?: @"Destinazione";
+        item.coordinate = CLLocationCoordinate2DMake([dict[@"lat"] doubleValue], [dict[@"lon"] doubleValue]);
+        item.isRecent = YES;
+        [self.results addObject:item];
+    }
+    self.showingRecents = (self.results.count > 0);
+    [self.tableView reloadData];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -136,10 +204,19 @@
     [self styleSearchField];
 }
 
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+    if (searchText.length == 0) {
+        [self loadRecentItems];
+    }
+}
+
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
     [searchBar resignFirstResponder];
     NSString *query = searchBar.text;
-    if (query.length == 0) return;
+    if (query.length == 0) {
+        [self loadRecentItems];
+        return;
+    }
 
     [self performSearch:query];
 }
@@ -148,6 +225,7 @@
     [self.spinner startAnimating];
     [self.results removeAllObjects];
     self.showMapAllButton = NO;
+    self.showingRecents = NO;
     [self.tableView reloadData];
 
     NSString *encoded = [query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
@@ -226,13 +304,39 @@
 #pragma mark - UITableViewDataSource & Delegate
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (self.showingRecents) {
+        return self.results.count + 1; // +1 per pulsante "Cancella cronologia"
+    }
     NSInteger extra = self.showMapAllButton ? 1 : 0;
     return self.results.count + extra;
 }
 
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (self.showingRecents) {
+        return @"🕒 DESTINAZIONI RECENTI";
+    } else if (self.results.count > 0) {
+        return [NSString stringWithFormat:@"RISULTATI PER \"%@\"", self.searchBar.text ?: @""];
+    }
+    return nil;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    // Prima riga: pulsante "Mostra tutti sulla mappa" (se abilitato)
-    if (self.showMapAllButton && indexPath.row == 0) {
+    // Ultima riga dei recenti: pulsante "Cancella cronologia"
+    if (self.showingRecents && indexPath.row == self.results.count) {
+        UITableViewCell *clearCell = [tableView dequeueReusableCellWithIdentifier:@"ClearRecentsCell"];
+        if (!clearCell) {
+            clearCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"ClearRecentsCell"];
+            clearCell.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+            clearCell.textLabel.textColor = [UIColor colorWithRed:0.95 green:0.4 blue:0.4 alpha:1.0];
+            clearCell.textLabel.font = [UIFont systemFontOfSize:14.0];
+            clearCell.textLabel.textAlignment = NSTextAlignmentCenter;
+        }
+        clearCell.textLabel.text = @"🗑️ Cancella cronologia destinazioni";
+        return clearCell;
+    }
+
+    // Prima riga: pulsante "Mostra tutti sulla mappa" (se abilitato per ricerca testuale)
+    if (self.showMapAllButton && indexPath.row == 0 && !self.showingRecents) {
         UITableViewCell *mapCell = [tableView dequeueReusableCellWithIdentifier:@"MapAllCell"];
         if (!mapCell) {
             mapCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"MapAllCell"];
@@ -256,20 +360,27 @@
         cell.detailTextLabel.font = [UIFont systemFontOfSize:12.0];
     }
 
-    NSInteger resultIndex = self.showMapAllButton ? (indexPath.row - 1) : indexPath.row;
+    NSInteger resultIndex = (self.showMapAllButton && !self.showingRecents) ? (indexPath.row - 1) : indexPath.row;
     SearchItem *item = self.results[resultIndex];
     NSArray *parts = [item.displayName componentsSeparatedByString:@", "];
-    if (parts.count > 0) {
-        cell.textLabel.text = parts[0];
+    NSString *mainTitle = (parts.count > 0) ? parts[0] : item.displayName;
+
+    if (self.showingRecents) {
+        cell.textLabel.text = [NSString stringWithFormat:@"🕒 %@", mainTitle];
+        if (parts.count > 1) {
+            NSRange restRange = NSMakeRange(1, parts.count - 1);
+            cell.detailTextLabel.text = [[parts subarrayWithRange:restRange] componentsJoinedByString:@", "];
+        } else {
+            cell.detailTextLabel.text = @"Destinazione recente";
+        }
+    } else {
+        cell.textLabel.text = mainTitle;
         if (parts.count > 1) {
             NSRange restRange = NSMakeRange(1, parts.count - 1);
             cell.detailTextLabel.text = [[parts subarrayWithRange:restRange] componentsJoinedByString:@", "];
         } else {
             cell.detailTextLabel.text = @"";
         }
-    } else {
-        cell.textLabel.text = item.displayName;
-        cell.detailTextLabel.text = @"";
     }
 
     return cell;
@@ -278,13 +389,21 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-    if (self.showMapAllButton && indexPath.row == 0) {
+    if (self.showingRecents && indexPath.row == self.results.count) {
+        [SearchViewController clearRecentDestinations];
+        [self loadRecentItems];
+        return;
+    }
+
+    if (self.showMapAllButton && indexPath.row == 0 && !self.showingRecents) {
         [self showAllResultsOnMap];
         return;
     }
 
-    NSInteger resultIndex = self.showMapAllButton ? (indexPath.row - 1) : indexPath.row;
+    NSInteger resultIndex = (self.showMapAllButton && !self.showingRecents) ? (indexPath.row - 1) : indexPath.row;
     SearchItem *selected = self.results[resultIndex];
+
+    [SearchViewController saveRecentDestinationWithTitle:selected.displayName coordinate:selected.coordinate];
 
     if ([self.delegate respondsToSelector:@selector(searchViewControllerDidSelectLocation:title:)]) {
         [self.delegate searchViewControllerDidSelectLocation:selected.coordinate title:selected.displayName];
