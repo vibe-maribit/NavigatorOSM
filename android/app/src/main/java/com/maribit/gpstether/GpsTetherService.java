@@ -22,7 +22,6 @@ import android.os.PowerManager;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.ServiceCompat;
 
 import java.util.List;
 
@@ -107,7 +106,7 @@ public class GpsTetherService extends Service implements LocationListener {
 
         Notification notification = buildNotification("In attesa di segnale GPS satellitare...");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
