@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.GPSTether" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/background</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+</resources>

@@ -9,6 +9,12 @@ build_ipa/
 
 # Binari distribuiti (generabili con ./package-ipa.sh)
 *.ipa
+packages/
+
+# Android build artifacts
+android/.gradle/
+android/**/build/
+*.apk
 
 # File di sistema e editor
 .DS_Store

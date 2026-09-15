@@ -21,67 +21,106 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Cerca Destinazione";
-    self.view.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+    self.view.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
 
     self.results = [NSMutableArray array];
 
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
     config.HTTPAdditionalHeaders = @{
-        @"User-Agent": @"NavigatoreOSM/1.0 (iPad Mini 1; iOS 9.3.5)"
+        @"User-Agent": @"NavigatoreOSM/1.1 (iPad Mini 1; iOS 9.3.5)"
     };
     self.session = [NSURLSession sessionWithConfiguration:config];
 
-    // Barra superiore con pulsante Chiudi
-    UIView *topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 60)];
+    // Barra superiore alta 64pt con pulsante Chiudi prominente
+    UIView *topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 64)];
     topBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    topBar.backgroundColor = [UIColor colorWithWhite:0.1 alpha:1.0];
+    topBar.backgroundColor = [UIColor colorWithWhite:0.16 alpha:1.0];
+    topBar.userInteractionEnabled = YES;
     [self.view addSubview:topBar];
 
+    // Pulsante Chiudi ad alto contrasto (stile pillola scura con bordo)
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    closeBtn.frame = CGRectMake(topBar.bounds.size.width - 90, 10, 80, 40);
+    closeBtn.frame = CGRectMake(topBar.bounds.size.width - 96, 12, 86, 40);
     closeBtn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-    [closeBtn setTitle:@"Annulla" forState:UIControlStateNormal];
-    [closeBtn setTitleColor:[UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0] forState:UIControlStateNormal];
-    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+    closeBtn.backgroundColor = [UIColor colorWithRed:0.85 green:0.25 blue:0.25 alpha:0.9];
+    closeBtn.layer.cornerRadius = 10.0;
+    closeBtn.layer.masksToBounds = YES;
+    [closeBtn setTitle:@"✕ Chiudi" forState:UIControlStateNormal];
+    [closeBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15.0];
     [closeBtn addTarget:self action:@selector(handleClose) forControlEvents:UIControlEventTouchUpInside];
     [topBar addSubview:closeBtn];
 
     // Search Bar
-    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(10, 8, topBar.bounds.size.width - 110, 44)];
+    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(10, 10, topBar.bounds.size.width - 116, 44)];
     self.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"Indirizzo, città o luogo...";
+    self.searchBar.placeholder = @"Cerca via, città o luogo...";
     self.searchBar.keyboardAppearance = UIKeyboardAppearanceDark;
-    self.searchBar.barTintColor = [UIColor colorWithWhite:0.1 alpha:1.0];
-    self.searchBar.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
-
-    // Configura esplicitamente il campo di testo interno per testo bianco brillante
-    UITextField *searchTextField = [self.searchBar valueForKey:@"searchField"];
-    if (searchTextField) {
-        searchTextField.textColor = [UIColor whiteColor];
-        searchTextField.backgroundColor = [UIColor colorWithWhite:0.22 alpha:1.0];
-        searchTextField.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
-        searchTextField.font = [UIFont systemFontOfSize:15.0];
-    }
+    self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
+    self.searchBar.barTintColor = [UIColor colorWithWhite:0.16 alpha:1.0];
+    self.searchBar.tintColor = [UIColor colorWithRed:0.3 green:0.7 blue:1.0 alpha:1.0];
     [topBar addSubview:self.searchBar];
 
+    // Gesture swipe verso il basso per chiudere la schermata
+    UISwipeGestureRecognizer *swipeDown = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleClose)];
+    swipeDown.direction = UISwipeGestureRecognizerDirectionDown;
+    [topBar addGestureRecognizer:swipeDown];
+
     // TableView
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 60, self.view.bounds.size.width, self.view.bounds.size.height - 60) style:UITableViewStylePlain];
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 64, self.view.bounds.size.width, self.view.bounds.size.height - 64) style:UITableViewStylePlain];
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.tableView.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
-    self.tableView.separatorColor = [UIColor colorWithWhite:0.3 alpha:1.0];
+    self.tableView.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    self.tableView.separatorColor = [UIColor colorWithWhite:0.25 alpha:1.0];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     [self.view addSubview:self.tableView];
 
+    // Tap sulla tabella per chiudere la tastiera
+    UITapGestureRecognizer *tapToDismiss = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
+    tapToDismiss.cancelsTouchesInView = NO;
+    [self.tableView addGestureRecognizer:tapToDismiss];
+
     // Spinner
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
-    self.spinner.center = CGPointMake(self.view.bounds.size.width / 2.0, 150);
+    self.spinner.center = CGPointMake(self.view.bounds.size.width / 2.0, 160);
     self.spinner.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
     self.spinner.hidesWhenStopped = YES;
     [self.view addSubview:self.spinner];
 
+    [self styleSearchField];
     [self.searchBar becomeFirstResponder];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self styleSearchField];
+}
+
+- (void)styleSearchField {
+    [self recursivelyStyleTextFieldInView:self.searchBar];
+}
+
+- (void)recursivelyStyleTextFieldInView:(UIView *)view {
+    if ([view isKindOfClass:[UITextField class]]) {
+        UITextField *tf = (UITextField *)view;
+        tf.textColor = [UIColor whiteColor];
+        tf.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+        tf.tintColor = [UIColor colorWithRed:0.3 green:0.7 blue:1.0 alpha:1.0];
+        tf.keyboardAppearance = UIKeyboardAppearanceDark;
+        tf.font = [UIFont systemFontOfSize:15.0];
+        @try {
+            [tf setValue:[UIColor colorWithWhite:0.70 alpha:1.0] forKeyPath:@"_placeholderLabel.textColor"];
+        } @catch (NSException *e) {}
+        return;
+    }
+    for (UIView *sub in view.subviews) {
+        [self recursivelyStyleTextFieldInView:sub];
+    }
+}
+
+- (void)dismissKeyboard {
+    [self.searchBar resignFirstResponder];
 }
 
 - (void)handleClose {
@@ -90,6 +129,10 @@
 }
 
 #pragma mark - UISearchBarDelegate
+
+- (void)searchBarTextDidBeginEditing:(UISearchBar *)searchBar {
+    [self styleSearchField];
+}
 
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
     [searchBar resignFirstResponder];

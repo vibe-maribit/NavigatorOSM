@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121214"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:gravity="center_horizontal">
+
+        <!-- Titolo Header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🛰️ GPS Tether"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Condivisione GPS per iPad NavigatoreOSM"
+            android:textColor="#90A4AE"
+            android:textSize="14sp"
+            android:layout_marginTop="4dp" />
+
+        <!-- Card Stato -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#1E1E24"
+            android:padding="16dp"
+            android:layout_marginTop="24dp"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚪ TRASMISSIONE FERMA\nAttiva Hotspot e premi AVVIA"
+                android:textColor="#B0BEC5"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textAlignment="center" />
+        </LinearLayout>
+
+        <!-- Pulsante START/STOP -->
+        <Button
+            android:id="@+id/btn_toggle"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:text="▶ AVVIA TRASMISSIONE"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:background="#00C853"
+            android:layout_marginTop="20dp" />
+
+        <!-- Card Statistiche GPS in tempo reale -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#1E1E24"
+            android:padding="16dp"
+            android:layout_marginTop="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="STATISTICHE GPS IN TEMPO REALE"
+                android:textColor="#80D8FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="12dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Coordinate:"
+                    android:textColor="#B0BEC5" />
+                <TextView
+                    android:id="@+id/tv_coordinates"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--.-----, --.-----"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Velocità attuale:"
+                    android:textColor="#B0BEC5" />
+                <TextView
+                    android:id="@+id/tv_speed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 km/h"
+                    android:textColor="#00E676"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Precisione segnale:"
+                    android:textColor="#B0BEC5" />
+                <TextView
+                    android:id="@+id/tv_accuracy"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="±-- m"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Pacchetti trasmessi:"
+                    android:textColor="#B0BEC5" />
+                <TextView
+                    android:id="@+id/tv_packets"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#40C4FF"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Configurazione Porta -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#1E1E24"
+            android:padding="16dp"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Porta Trasmissione:"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/et_port"
+                android:layout_width="90dp"
+                android:layout_height="44dp"
+                android:text="8888"
+                android:inputType="number"
+                android:gravity="center"
+                android:background="#2C2C34"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Card Guida Rapida -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#171C26"
+            android:padding="16dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="30dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📖 GUIDA RAPIDA IN AUTO"
+                android:textColor="#64B5F6"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Attiva l'Hotspot Personale Wi-Fi di questo telefono.\n2. Connetti l'iPad all'Hotspot.\n3. Tocca 'AVVIA TRASMISSIONE' su quest'app.\n4. Apri NavigatoreOSM sull'iPad: il puntino diventerà verde/blu in tempo reale!"
+                android:textColor="#CFD8DC"
+                android:textSize="13sp"
+                android:lineSpacingExtra="4dp"
+                android:layout_marginTop="8dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

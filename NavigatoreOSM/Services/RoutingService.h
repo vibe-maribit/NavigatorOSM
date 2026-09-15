@@ -24,6 +24,8 @@
 @property (nonatomic, copy) NSString *destinationTitle;
 @property (nonatomic, copy) NSString *routeSummary;
 @property (nonatomic, copy) NSString *trafficDescription;
+@property (nonatomic, copy) NSString *badgeTitle;
+@property (nonatomic, copy) NSString *deltaDescription;
 @property (nonatomic, assign) NSUInteger routeIndex;
 @property (nonatomic, assign) BOOL isPrimary;
 

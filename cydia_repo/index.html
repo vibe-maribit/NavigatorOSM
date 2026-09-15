@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NavigatoreOSM - Cydia Repository</title>
+    <style>
+        :root {
+            --bg: #121216;
+            --card: #1C1C24;
+            --accent: #007AFF;
+            --green: #34C759;
+            --text: #FFFFFF;
+            --subtext: #8E8E93;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            color: var(--text);
+        }
+        .header p {
+            color: var(--subtext);
+            font-size: 15px;
+            margin-top: 8px;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .btn {
+            display: block;
+            text-align: center;
+            background: var(--accent);
+            color: white;
+            padding: 14px 20px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 16px;
+            text-decoration: none;
+            margin-top: 15px;
+            transition: opacity 0.2s;
+        }
+        .btn-cydia {
+            background: #8b572a;
+        }
+        .btn-green {
+            background: var(--green);
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .repo-url {
+            background: #000;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #40C4FF;
+            word-break: break-all;
+            user-select: all;
+            margin-top: 10px;
+            text-align: center;
+        }
+        ol {
+            padding-left: 20px;
+            line-height: 1.8;
+            color: #E0E0E0;
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(0, 122, 255, 0.2);
+            color: var(--accent);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="badge">RETROFIT IPAD MINI 1</span>
+            <h1>🗺️ NavigatoreOSM</h1>
+            <p>Navigatore GPS offline nativo per iOS 9.3.5</p>
+        </div>
+
+        <!-- Card Aggiungi a Cydia -->
+        <div class="card">
+            <h2>📲 Aggiornamenti Senza Cavo (Cydia OTA)</h2>
+            <p>Aggiungi questo repository su Cydia per installare e ricevere tutti i futuri aggiornamenti direttamente via Wi-Fi sull'iPad:</p>
+            
+            <a class="btn btn-cydia" href="cydia://url/https://cydia.saurik.com/api/share#?source=https://vibe-maribit.github.io/NavigatorOSM/">
+                ➕ Aggiungi a Cydia (da iPad)
+            </a>
+
+            <p style="margin-top: 20px; font-size: 14px; color: var(--subtext);">Oppure aggiungi manualmente l'URL sorgente:</p>
+            <div class="repo-url">https://vibe-maribit.github.io/NavigatorOSM/</div>
+        </div>
+
+        <!-- Istruzioni Cydia -->
+        <div class="card">
+            <h3>📖 Come Aggiungere la Sorgente su iPad:</h3>
+            <ol>
+                <li>Apri <strong>Cydia</strong> sull'iPad Mini.</li>
+                <li>Tocca <strong>Sorgenti</strong> nella barra in basso.</li>
+                <li>Tocca <strong>Modifica</strong> (in alto a destra) e poi <strong>Aggiungi</strong> (in alto a sinistra).</li>
+                <li>Incolla l'indirizzo: <code>https://vibe-maribit.github.io/NavigatorOSM/</code></li>
+                <li>Tocca <strong>Aggiungi sorgente</strong> e attendi il ricaricamento.</li>
+                <li>Ora troverai <strong>NavigatoreOSM</strong> nei pacchetti del repo, pronto per l'installazione!</li>
+            </ol>
+        </div>
+
+        <!-- Download Diretti -->
+        <div class="card">
+            <h3>📦 Download Diretti (GitHub Releases)</h3>
+            <p style="font-size: 14px; color: var(--subtext);">Scarica i pacchetti compilati pronti all'uso:</p>
+            
+            <a class="btn btn-green" href="https://github.com/vibe-maribit/NavigatorOSM/releases">
+                ⬇️ Vai alle Release su GitHub
+            </a>
+            <ul style="margin-top: 15px; color: #BBB; font-size: 14px; line-height: 1.6;">
+                <li><strong>NavigatoreOSM.ipa</strong>: Installazione USB con ideviceinstaller.</li>
+                <li><strong>NavigatoreOSM.deb</strong>: Pacchetto Cydia per installazione manuale.</li>
+                <li><strong>GPSTether.apk</strong>: App Android per condividere il GPS dello smartphone via Hotspot.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,5 +1,6 @@
 #import "NavigationViewController.h"
 #import "SearchViewController.h"
+#import "SettingsViewController.h"
 #import "../Overlays/OSMTileOverlay.h"
 #import "../Overlays/TrafficTileOverlay.h"
 #import "../Services/RoutingService.h"
@@ -11,7 +12,7 @@
 #import "../Views/RouteSelectorView.h"
 #import "../Views/QuickPOIShelfView.h"
 
-@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate>
+@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate>
 
 @property (nonatomic, strong) OSMTileOverlay *osmOverlay;
 @property (nonatomic, strong) TrafficTileOverlay *trafficOverlay;
@@ -33,6 +34,7 @@
 @property (nonatomic, strong) UIButton *trafficButton;
 @property (nonatomic, strong) UIButton *themeButton;
 @property (nonatomic, strong) UIButton *muteButton;
+@property (nonatomic, strong) UIButton *settingsButton;
 @property (nonatomic, strong) UILabel *gpsSourceLabel;
 
 // Stato 3D / 2D e Navigazione
@@ -207,6 +209,11 @@
     [self.muteButton addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.muteButton];
 
+    // Pulsante Impostazioni ⚙️
+    self.settingsButton = [self createCircularButtonWithTitle:@"⚙️" frame:CGRectMake(w - 68 - (btnSpacing * 5), btnY, 50, 50)];
+    [self.settingsButton addTarget:self action:@selector(openSettings) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.settingsButton];
+
     // 8. Selettore Itinerari Multipli in basso
     self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(30, h - 195, w - 60, 175)];
     self.routeSelector.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
@@ -283,9 +290,15 @@
 - (void)openSearch {
     SearchViewController *searchVC = [[SearchViewController alloc] init];
     searchVC.delegate = self;
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:searchVC];
-    nav.modalPresentationStyle = UIModalPresentationFormSheet;
-    [self presentViewController:nav animated:YES completion:nil];
+    searchVC.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:searchVC animated:YES completion:nil];
+}
+
+- (void)openSettings {
+    SettingsViewController *settingsVC = [[SettingsViewController alloc] init];
+    settingsVC.delegate = self;
+    settingsVC.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:settingsVC animated:YES completion:nil];
 }
 
 - (void)toggleTraffic {

@@ -1,0 +1,165 @@
+name: Build & Release NavigatoreOSM
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versione Release (es. v1.1.0)'
+        required: true
+        default: 'v1.1.0'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-ios:
+    name: Build iOS (armv7 32-bit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Compilazione NavigatoreOSM (IPA & DEB) con Theos Docker
+        run: |
+          chmod +x package-ipa.sh
+          ./package-ipa.sh
+          docker run --rm -v "$GITHUB_WORKSPACE:/project" -w /project cauan/theos make package DEBUG=0 messages=no
+
+      - name: Genera Indici Repository Cydia
+        run: |
+          mkdir -p cydia_repo/debs
+          cp packages/*.deb cydia_repo/debs/
+          chmod +x cydia_repo/update-repo.py
+          python3 cydia_repo/update-repo.py
+
+      - name: Upload Artifacts iOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-binaries
+          path: |
+            NavigatoreOSM.ipa
+            packages/*.deb
+            cydia_repo/
+
+  build-android:
+    name: Build Android (GPSTether APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Compila APK con Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../GPSTether.apk
+
+      - name: Upload Artifact Android
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-binary
+          path: GPSTether.apk
+
+  publish-release:
+    name: Pubblica GitHub Release
+    needs: [build-ios, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Scarica Artifacts iOS
+        uses: actions/download-artifact@v3
+        with:
+          name: ios-binaries
+
+      - name: Scarica Artifact Android
+        uses: actions/download-artifact@v3
+        with:
+          name: android-binary
+
+      - name: Determina Versione Release
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Crea GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          name: Release ${{ steps.get_version.outputs.TAG }}
+          body: |
+            ## 🗺️ NavigatoreOSM - Release ${{ steps.get_version.outputs.TAG }}
+            
+            Retrofit per iPad Mini 1ª Generazione (A1432, iOS 9.3.5, 32-bit armv7) + Companion App Android per GPS Tethering.
+
+            ---
+
+            ### 📲 Come Aggiornare via OTA Senza Cavo (Cydia)
+            1. Apri **Cydia** sull'iPad Mini.
+            2. Vai su **Sorgenti** ➔ **Modifica** ➔ **Aggiungi**.
+            3. Inserisci l'URL del repository:
+               `https://vibe-maribit.github.io/NavigatorOSM/`
+            4. Cydia troverà automaticamente l'applicazione **NavigatoreOSM** pronta per l'installazione o l'aggiornamento con un solo tap via Wi-Fi!
+
+            ---
+
+            ### 📦 File Allegati a questa Release:
+            - `NavigatoreOSM.ipa`: Pacchetto per installazione diretta via USB con `ideviceinstaller` o Sideload.
+            - `com.nicola.NavigatoreOSM_*.deb`: Pacchetto Debian nativo per Cydia o Filza File Manager.
+            - `GPSTether.apk`: App companion per smartphone Android (condivisione GPS via Hotspot Wi-Fi).
+
+            ---
+
+            ### 🛰️ Guida Rapida GPS Hotspot Android:
+            1. Installa `GPSTether.apk` sul tuo smartphone Android.
+            2. Attiva l'**Hotspot Personale Wi-Fi** dello smartphone e connetti l'iPad.
+            3. Apri l'app **GPS Tether** sullo smartphone e tocca **▶ AVVIA TRASMISSIONE**.
+            4. Apri **Navigatore** sull'iPad: il segnale GPS diventerà attivo e preciso in tempo reale!
+          files: |
+            NavigatoreOSM.ipa
+            packages/*.deb
+            GPSTether.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-cydia-repo:
+    name: Aggiorna Repository Cydia su GitHub Pages
+    needs: [build-ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Scarica Artifacts iOS
+        uses: actions/download-artifact@v3
+        with:
+          name: ios-binaries
+          path: downloaded
+
+      - name: Deploy su GitHub Pages (gh-pages)
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./cydia_repo
+          publish_branch: gh-pages
+          force_orphan: true

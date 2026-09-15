@@ -90,11 +90,15 @@
         NSString *distStr = (r.totalDistance > 1000) ? [NSString stringWithFormat:@"%.1f km", r.totalDistance / 1000.0]
                                                      : [NSString stringWithFormat:@"%d m", (int)r.totalDistance];
 
-        NSString *title = [NSString stringWithFormat:@"%@ • %@\n%@\n%@", timeStr, distStr, r.routeSummary ?: @"", r.trafficDescription ?: @""];
+        NSString *badge = r.badgeTitle ?: @"Itinerario";
+        NSString *delta = r.deltaDescription ?: @"";
+        NSString *roads = r.routeSummary ?: @"";
+
+        NSString *title = [NSString stringWithFormat:@"%@\n%@ • %@\n%@ • %@", badge, timeStr, distStr, delta, roads];
         [btn setTitle:title forState:UIControlStateNormal];
-        btn.titleLabel.numberOfLines = 3;
+        btn.titleLabel.numberOfLines = 4;
         btn.titleLabel.textAlignment = NSTextAlignmentCenter;
-        btn.titleLabel.font = [UIFont systemFontOfSize:13.0];
+        btn.titleLabel.font = [UIFont systemFontOfSize:12.0];
 
         [self.buttonsContainer addSubview:btn];
         [self.routeButtons addObject:btn];

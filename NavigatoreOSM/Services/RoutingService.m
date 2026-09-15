@@ -126,6 +126,20 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         CLLocationDistance totalDistance = [rDict[@"distance"] doubleValue];
         NSTimeInterval totalDuration = [rDict[@"duration"] doubleValue];
 
+        // Filtro Deduplicazione: evita di mostrare due itinerari identici
+        BOOL isDuplicate = NO;
+        for (RouteInfo *existing in results) {
+            if (fabs(existing.totalDistance - totalDistance) < 60.0 &&
+                fabs(existing.totalDuration - totalDuration) < 25.0) {
+                isDuplicate = YES;
+                break;
+            }
+        }
+        if (isDuplicate) {
+            NSLog(@"[RoutingService] Scartato itinerario duplicato (distanza: %.0fm, tempo: %.0fs)", totalDistance, totalDuration);
+            continue;
+        }
+
         // 1. Geometria GeoJSON [lon, lat]
         NSDictionary *geometry = rDict[@"geometry"];
         NSArray *coordinates = geometry[@"coordinates"];
@@ -141,15 +155,14 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         MKPolyline *polyline = [MKPolyline polylineWithCoordinates:coords count:count];
         free(coords);
 
-        // 2. Passaggi di manovra e sintesi strade
+        // 2. Passaggi di manovra e calcolo strade principali
         NSMutableArray<ManeuverStep *> *steps = [NSMutableArray array];
-        NSString *summaryStr = nil;
+        NSMutableDictionary<NSString *, NSNumber *> *roadDistances = [NSMutableDictionary dictionary];
         NSString *trafficStatus = @"Scorrevole 🟢";
 
         NSArray *legs = rDict[@"legs"];
         if (legs.count > 0) {
             NSDictionary *firstLeg = legs[0];
-            summaryStr = firstLeg[@"summary"];
             trafficStatus = EvaluateTrafficDescription(firstLeg);
 
             NSArray *rawSteps = firstLeg[@"steps"];
@@ -158,6 +171,11 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                 step.distance = [raw[@"distance"] doubleValue];
                 step.duration = [raw[@"duration"] doubleValue];
                 step.streetName = raw[@"name"] ?: @"";
+
+                if (step.streetName.length > 2) {
+                    double currentDist = [roadDistances[step.streetName] doubleValue];
+                    roadDistances[step.streetName] = @(currentDist + step.distance);
+                }
 
                 NSDictionary *maneuver = raw[@"maneuver"];
                 step.type = maneuver[@"type"] ?: @"";
@@ -171,8 +189,18 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
             }
         }
 
-        if (!summaryStr || summaryStr.length == 0) {
-            summaryStr = (rIdx == 0) ? @"Percorso principale" : [NSString stringWithFormat:@"Itinerario alternativo %lu", (unsigned long)rIdx];
+        // Trova le 2 strade con percorrenza maggiore per il riassunto reale
+        NSArray *sortedRoads = [roadDistances keysSortedByValueUsingComparator:^NSComparisonResult(NSNumber *obj1, NSNumber *obj2) {
+            return [obj2 compare:obj1];
+        }];
+
+        NSString *summaryStr = nil;
+        if (sortedRoads.count >= 2) {
+            summaryStr = [NSString stringWithFormat:@"via %@ / %@", sortedRoads[0], sortedRoads[1]];
+        } else if (sortedRoads.count == 1) {
+            summaryStr = [NSString stringWithFormat:@"via %@", sortedRoads[0]];
+        } else {
+            summaryStr = (results.count == 0) ? @"Percorso principale" : [NSString stringWithFormat:@"Alternativa %lu", (unsigned long)results.count];
         }
 
         RouteInfo *info = [[RouteInfo alloc] init];
@@ -184,10 +212,48 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         info.destinationTitle = title ?: @"Destinazione";
         info.routeSummary = summaryStr;
         info.trafficDescription = trafficStatus;
-        info.routeIndex = rIdx;
-        info.isPrimary = (rIdx == 0);
+        info.routeIndex = results.count;
+        info.isPrimary = (results.count == 0);
 
         [results addObject:info];
+    }
+
+    // 3. Classificazione Intelligente e calcolo differenziali rispetto al percorso primario
+    if (results.count > 0) {
+        NSTimeInterval minDuration = DBL_MAX;
+        CLLocationDistance minDistance = DBL_MAX;
+        for (RouteInfo *r in results) {
+            if (r.totalDuration < minDuration) minDuration = r.totalDuration;
+            if (r.totalDistance < minDistance) minDistance = r.totalDistance;
+        }
+
+        RouteInfo *primary = results[0];
+        for (NSUInteger i = 0; i < results.count; i++) {
+            RouteInfo *r = results[i];
+            // Assegna badge strategico
+            if (fabs(r.totalDuration - minDuration) < 15.0 && fabs(r.totalDistance - minDistance) < 100.0) {
+                r.badgeTitle = @"⭐ Ottimale";
+            } else if (fabs(r.totalDuration - minDuration) < 15.0) {
+                r.badgeTitle = @"🚀 Più Veloce";
+            } else if (fabs(r.totalDistance - minDistance) < 100.0) {
+                r.badgeTitle = @"🍃 Più Breve";
+            } else {
+                r.badgeTitle = @"⚖️ Alternativa";
+            }
+
+            // Assegna delta
+            if (i == 0) {
+                r.deltaDescription = @"Consigliato";
+            } else {
+                int deltaMins = (int)round((r.totalDuration - primary.totalDuration) / 60.0);
+                double deltaKm = (r.totalDistance - primary.totalDistance) / 1000.0;
+
+                NSString *timeDelta = (deltaMins == 0) ? @"Stesso tempo" : (deltaMins > 0 ? [NSString stringWithFormat:@"+%d min", deltaMins] : [NSString stringWithFormat:@"%d min", deltaMins]);
+                NSString *distDelta = (fabs(deltaKm) < 0.1) ? @"Stessa dist." : (deltaKm > 0 ? [NSString stringWithFormat:@"+%.1f km", deltaKm] : [NSString stringWithFormat:@"%.1f km", deltaKm]);
+
+                r.deltaDescription = [NSString stringWithFormat:@"%@ • %@", timeDelta, distDelta];
+            }
+        }
     }
 
     return results;

@@ -9,6 +9,7 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/AppDelegate.m \
                       NavigatoreOSM/Controllers/NavigationViewController.m \
                       NavigatoreOSM/Controllers/SearchViewController.m \
+                      NavigatoreOSM/Controllers/SettingsViewController.m \
                       NavigatoreOSM/Overlays/OSMTileOverlay.m \
                       NavigatoreOSM/Overlays/TrafficTileOverlay.m \
                       NavigatoreOSM/Services/RoutingService.m \
