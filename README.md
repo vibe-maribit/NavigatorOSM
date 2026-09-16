@@ -1,6 +1,7 @@
 # 🗺️ NavigatorOSM: In-Car GPS Navigator for Legacy iPads (iOS 9.3.5 / 32-bit armv7)
 
 [![Release](https://img.shields.io/github/v/release/vibe-maribit/NavigatorOSM?style=for-the-badge&color=blue)](https://github.com/vibe-maribit/NavigatorOSM/releases)
+[![Downloads](https://img.shields.io/github/downloads/vibe-maribit/NavigatorOSM/total?style=for-the-badge&color=238636&logo=github)](https://github.com/vibe-maribit/NavigatorOSM/releases)
 [![Target](https://img.shields.io/badge/Target-iOS%209.3.5%20%7C%2032--bit%20armv7-green?style=for-the-badge&logo=apple)](https://github.com/vibe-maribit/NavigatorOSM)
 [![Map](https://img.shields.io/badge/Maps-OpenStreetMap%20%7C%20Esri%20%7C%20Satellite-orange?style=for-the-badge&logo=openstreetmap)](https://openstreetmap.org)
 [![RAM Footprint](https://img.shields.io/badge/RAM%20Usage-%3C%2025%20MB%20%7C%2060%20FPS-purple?style=for-the-badge)](https://github.com/vibe-maribit/NavigatorOSM)
