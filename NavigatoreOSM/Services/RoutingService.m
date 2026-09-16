@@ -1,11 +1,25 @@
 #import "RoutingService.h"
 #import "LocalizationManager.h"
+#import "FuelPriceService.h"
 
 @implementation ManeuverStep
 @end
 
 @implementation RouteInfo
+
+- (void)updateTripCosts {
+    FuelPriceService *fuel = [FuelPriceService sharedService];
+    self.fuelCost = [fuel fuelCostForDistance:self.totalDistance];
+    self.tollCost = [fuel estimatedTollCostForDistance:self.totalDistance hasTolls:self.hasToll];
+    self.totalTripCost = self.fuelCost + self.tollCost;
+}
+
+- (NSString *)formattedCostSummary {
+    return [[FuelPriceService sharedService] formattedCostSummaryForFuelCost:self.fuelCost tollCost:self.tollCost];
+}
+
 @end
+
 
 @interface RoutingService ()
 @property (nonatomic, strong) NSURLSession *session;
@@ -223,6 +237,23 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         info.routeIndex = results.count;
         info.isPrimary = (results.count == 0);
 
+        BOOL hasHwy = NO;
+        BOOL hasToll = NO;
+        for (ManeuverStep *st in steps) {
+            NSString *lower = [st.streetName lowercaseString];
+            if ([lower containsString:@"autostrada"] || [lower containsString:@"tangenziale"] ||
+                [lower containsString:@"pedaggio"] || [lower containsString:@"toll"] ||
+                [lower hasPrefix:@"a1"] || [lower hasPrefix:@"a4"] || [lower hasPrefix:@"a8"] ||
+                [lower hasPrefix:@"a7"] || [lower hasPrefix:@"a9"] || [lower hasPrefix:@"a14"] ||
+                [lower hasPrefix:@"a22"] || [lower hasPrefix:@"a35"]) {
+                hasHwy = YES;
+                hasToll = YES;
+            }
+        }
+        info.hasHighway = hasHwy;
+        info.hasToll = hasToll;
+        [info updateTripCosts];
+
         [results addObject:info];
     }
 
@@ -387,11 +418,275 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
     });
 }
 
+static NSArray<NSValue *> *DecodePolyline6(NSString *encoded) {
+    if (!encoded || encoded.length == 0) return @[];
+    NSMutableArray<NSValue *> *coordsArray = [NSMutableArray array];
+    const char *bytes = [encoded UTF8String];
+    NSUInteger len = strlen(bytes);
+    NSUInteger idx = 0;
+    int lat = 0;
+    int lng = 0;
+    double precision = 1e6;
+
+    while (idx < len) {
+        int result = 0;
+        int shift = 0;
+        while (idx < len) {
+            int b = bytes[idx++] - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+            if (b < 0x20) break;
+        }
+        int dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lat += dlat;
+
+        result = 0;
+        shift = 0;
+        while (idx < len) {
+            int b = bytes[idx++] - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+            if (b < 0x20) break;
+        }
+        int dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lng += dlng;
+
+        CLLocationCoordinate2D coord = CLLocationCoordinate2DMake((double)lat / precision, (double)lng / precision);
+        [coordsArray addObject:[NSValue valueWithBytes:&coord objCType:@encode(CLLocationCoordinate2D)]];
+    }
+    return coordsArray;
+}
+
+static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
+    NSUInteger count = coordsArray.count;
+    if (count == 0) return nil;
+    CLLocationCoordinate2D *coords = malloc(sizeof(CLLocationCoordinate2D) * count);
+    for (NSUInteger i = 0; i < count; i++) {
+        [coordsArray[i] getValue:&coords[i]];
+    }
+    MKPolyline *polyline = [MKPolyline polylineWithCoordinates:coords count:count];
+    free(coords);
+    return polyline;
+}
+
+- (RouteInfo *)routeFromValhallaTrip:(NSDictionary *)trip
+                          destination:(CLLocationCoordinate2D)destination
+                                title:(NSString *)title {
+    if (![trip isKindOfClass:[NSDictionary class]]) return nil;
+
+    NSDictionary *summary = trip[@"summary"];
+    NSArray *legs = trip[@"legs"];
+    if (![legs isKindOfClass:[NSArray class]] || legs.count == 0) return nil;
+
+    NSDictionary *leg = legs[0];
+    NSString *shape = leg[@"shape"];
+    NSArray<NSValue *> *decodedCoords = DecodePolyline6(shape);
+    if (decodedCoords.count == 0) return nil;
+
+    MKPolyline *polyline = PolylineFromCoords(decodedCoords);
+
+    double lengthKm = [summary[@"length"] doubleValue];
+    double totalDistance = lengthKm * 1000.0;
+    double totalDuration = [summary[@"time"] doubleValue];
+    BOOL hasToll = [summary[@"has_toll"] boolValue];
+    BOOL hasHighway = [summary[@"has_highway"] boolValue];
+
+    NSMutableArray<ManeuverStep *> *steps = [NSMutableArray array];
+    NSMutableDictionary<NSString *, NSNumber *> *roadDistances = [NSMutableDictionary dictionary];
+
+    NSArray *rawManeuvers = leg[@"maneuvers"];
+    for (NSDictionary *m in rawManeuvers) {
+        ManeuverStep *step = [[ManeuverStep alloc] init];
+        step.distance = [m[@"length"] doubleValue] * 1000.0;
+        step.duration = [m[@"time"] doubleValue];
+        step.instruction = m[@"instruction"] ?: @"";
+
+        NSArray *names = m[@"street_names"];
+        if ([names isKindOfClass:[NSArray class]] && names.count > 0) {
+            step.streetName = names[0];
+        } else {
+            step.streetName = @"";
+        }
+
+        if (step.streetName.length > 2) {
+            double cur = [roadDistances[step.streetName] doubleValue];
+            roadDistances[step.streetName] = @(cur + step.distance);
+        }
+
+        NSInteger shapeIdx = [m[@"begin_shape_index"] integerValue];
+        if (shapeIdx >= 0 && shapeIdx < (NSInteger)decodedCoords.count) {
+            CLLocationCoordinate2D c;
+            [decodedCoords[shapeIdx] getValue:&c];
+            step.coordinate = c;
+        }
+
+        NSInteger mType = [m[@"type"] integerValue];
+        if (mType == 4 || mType == 5 || mType == 6) {
+            step.type = @"arrive";
+        } else if (mType == 1 || mType == 2 || mType == 3) {
+            step.type = @"depart";
+        } else if (mType == 26 || mType == 27) {
+            step.type = @"roundabout";
+        } else if (mType == 14 || mType == 15 || mType == 16) {
+            step.type = @"turn";
+            step.modifier = @"left";
+        } else if (mType == 9 || mType == 10 || mType == 11) {
+            step.type = @"turn";
+            step.modifier = @"right";
+        } else if (mType == 12 || mType == 13) {
+            step.type = @"turn";
+            step.modifier = @"uturn";
+        } else {
+            step.type = @"continue";
+        }
+
+        [steps addObject:step];
+    }
+
+    NSArray *sortedRoads = [roadDistances keysSortedByValueUsingComparator:^NSComparisonResult(NSNumber *o1, NSNumber *o2) {
+        return [o2 compare:o1];
+    }];
+
+    NSString *summaryStr = nil;
+    if (sortedRoads.count >= 2) {
+        summaryStr = [NSString stringWithFormat:@"via %@ / %@", sortedRoads[0], sortedRoads[1]];
+    } else if (sortedRoads.count == 1) {
+        summaryStr = [NSString stringWithFormat:@"via %@", sortedRoads[0]];
+    } else {
+        summaryStr = hasToll ? @"Percorso Autostradale" : @"Percorso Statale";
+    }
+
+    RouteInfo *info = [[RouteInfo alloc] init];
+    info.polyline = polyline;
+    info.steps = steps;
+    info.totalDistance = totalDistance;
+    info.totalDuration = totalDuration;
+    info.destinationCoordinate = destination;
+    info.destinationTitle = title ?: @"Destinazione";
+    info.routeSummary = summaryStr;
+    info.trafficDescription = @"Scorrevole 🟢";
+    info.hasToll = hasToll;
+    info.hasHighway = hasHighway;
+    [info updateTripCosts];
+
+    return info;
+}
+
+- (NSArray<RouteInfo *> *)parseValhallaResponseData:(NSData *)data
+                                        destination:(CLLocationCoordinate2D)destination
+                                              title:(NSString *)title
+                                              error:(NSError **)outError {
+    NSError *jsonError = nil;
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+    if (jsonError || ![json isKindOfClass:[NSDictionary class]]) {
+        if (outError) *outError = jsonError ?: [NSError errorWithDomain:@"RoutingService" code:-2 userInfo:@{NSLocalizedDescriptionKey: @"Risposta Valhalla non valida"}];
+        return nil;
+    }
+
+    NSMutableArray<RouteInfo *> *results = [NSMutableArray array];
+
+    NSDictionary *primaryTrip = json[@"trip"];
+    RouteInfo *r0 = [self routeFromValhallaTrip:primaryTrip destination:destination title:title];
+    if (r0) {
+        [results addObject:r0];
+    }
+
+    NSArray *alts = json[@"alternates"];
+    if ([alts isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *alt in alts) {
+            NSDictionary *altTrip = alt[@"trip"];
+            RouteInfo *rAlt = [self routeFromValhallaTrip:altTrip destination:destination title:title];
+            if (rAlt) {
+                [self appendUniqueRoute:rAlt toRoutes:results];
+            }
+        }
+    }
+
+    if (results.count == 0) {
+        if (outError) *outError = [NSError errorWithDomain:@"RoutingService" code:-2 userInfo:@{NSLocalizedDescriptionKey: @"Nessun percorso restituito da Valhalla"}];
+        return nil;
+    }
+
+    [self reindexAndClassifyRoutes:results];
+    return results;
+}
+
+- (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
+                         to:(CLLocationCoordinate2D)destination
+           destinationTitle:(NSString *)title
+                 avoidTolls:(BOOL)avoidTolls
+              avoidHighways:(BOOL)avoidHighways
+             corridorOffset:(double)offsetRatio
+                 completion:(RoutesCompletionBlock)completion {
+
+    NSLog(@"[RoutingService] Calcolo itinerario da (%.4f, %.4f) a (%.4f, %.4f) [Pedaggi: %@, Autostrade: %@]",
+          start.latitude, start.longitude, destination.latitude, destination.longitude,
+          avoidTolls ? @"NO" : @"SI", avoidHighways ? @"NO" : @"SI");
+
+    __weak RoutingService *weakSelf = self;
+
+    // Se l'utente ha richiesto esplicitamente di evitare pedaggi o autostrade, usiamo il motore avanzato Valhalla
+    if (avoidTolls || avoidHighways) {
+        NSURL *url = [NSURL URLWithString:@"https://valhalla1.openstreetmap.de/route"];
+        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+        req.HTTPMethod = @"POST";
+        [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+        BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+        NSDictionary *body = @{
+            @"locations": @[
+                @{ @"lat": @(start.latitude), @"lon": @(start.longitude) },
+                @{ @"lat": @(destination.latitude), @"lon": @(destination.longitude) }
+            ],
+            @"costing": @"auto",
+            @"costing_options": @{
+                @"auto": @{
+                    @"use_highways": avoidHighways ? @(0.0) : @(1.0),
+                    @"use_tolls": avoidTolls ? @(0.0) : @(1.0)
+                }
+            },
+            @"alternates": @(2),
+            @"directions_options": @{
+                @"units": @"kilometers",
+                @"language": isIt ? @"it-IT" : @"en-US"
+            }
+        };
+
+        NSError *encErr = nil;
+        req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:&encErr];
+
+        NSURLSessionDataTask *vTask = [self.session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+            if (!err && data) {
+                NSError *parseErr = nil;
+                NSArray<RouteInfo *> *valhallaRoutes = [weakSelf parseValhallaResponseData:data destination:destination title:title error:&parseErr];
+                if (valhallaRoutes.count > 0) {
+                    NSLog(@"[RoutingService] Valhalla ha calcolato %lu itinerari con successo", (unsigned long)valhallaRoutes.count);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (completion) completion(valhallaRoutes, nil);
+                    });
+                    return;
+                }
+                NSLog(@"[RoutingService] Valhalla parse fallito: %@, tento fallback OSRM", parseErr);
+            } else {
+                NSLog(@"[RoutingService] Valhalla network err: %@, tento fallback OSRM", err);
+            }
+
+            // Fallback su OSRM standard in caso di errore Valhalla
+            [weakSelf calculateRoutesFrom:start to:destination destinationTitle:title corridorOffset:offsetRatio completion:completion];
+        }];
+        [vTask resume];
+        return;
+    }
+
+    // Modalità standard: OSRM primario con corridoi alternativi
+    [self calculateRoutesFrom:start to:destination destinationTitle:title corridorOffset:offsetRatio completion:completion];
+}
+
 - (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
                          to:(CLLocationCoordinate2D)destination
             destinationTitle:(NSString *)title
                   completion:(RoutesCompletionBlock)completion {
-    [self calculateRoutesFrom:start to:destination destinationTitle:title corridorOffset:0.22 completion:completion];
+    [self calculateRoutesFrom:start to:destination destinationTitle:title avoidTolls:NO avoidHighways:NO corridorOffset:0.22 completion:completion];
 }
 
 - (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
@@ -412,7 +707,7 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                                @"http://routing.openstreetmap.de/routed-car/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=true&annotations=true",
                                coordsParam];
 
-    NSLog(@"[RoutingService] Richiesta itinerari da (%.4f, %.4f) a (%.4f, %.4f) con offset %.2f",
+    NSLog(@"[RoutingService] Richiesta itinerari OSRM da (%.4f, %.4f) a (%.4f, %.4f) con offset %.2f",
           start.latitude, start.longitude, destination.latitude, destination.longitude, offsetRatio);
 
     __weak RoutingService *weakSelf = self;
@@ -424,16 +719,16 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
             if (parsed.count > 0) {
                 NSMutableArray<RouteInfo *> *routesMut = [parsed mutableCopy];
                 [weakSelf enrichWithAlternativeCorridors:routesMut start:start destination:destination title:title offsetRatio:offsetRatio completion:^(NSArray<RouteInfo *> *finalRoutes) {
-                    NSLog(@"[RoutingService] Itinerari finali calcolati: %lu percorsi", (unsigned long)finalRoutes.count);
+                    NSLog(@"[RoutingService] Itinerari finali OSRM calcolati: %lu percorsi", (unsigned long)finalRoutes.count);
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (completion) completion(finalRoutes, nil);
                     });
                 }];
                 return;
             }
-            NSLog(@"[RoutingService] Server primario ha restituito errore di parsing: %@", parseErr);
+            NSLog(@"[RoutingService] Server primario OSRM ha restituito errore di parsing: %@", parseErr);
         } else {
-            NSLog(@"[RoutingService] Errore server primario: %@, tento server secondario...", error.localizedDescription);
+            NSLog(@"[RoutingService] Errore server primario OSRM: %@, tento server secondario...", error.localizedDescription);
         }
 
         // Tentativo su server secondario (OSM DE router)

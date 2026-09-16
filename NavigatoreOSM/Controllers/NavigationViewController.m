@@ -14,6 +14,7 @@
 #import "../Views/QuickPOIShelfView.h"
 #import "../Views/POIResultsCardView.h"
 #import "../Services/LocalizationManager.h"
+#import "../Services/FuelPriceService.h"
 
 @interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate, RouteSummaryViewControllerDelegate>
 
@@ -122,6 +123,9 @@
 
     // Messaggio vocale di avvio
     [[VoiceGuidanceService sharedService] speak:NLString(@"READY_3D", @"Navigatore pronto con visuale 3D prospettica.")];
+
+    // Aggiornamento prezzi carburanti online MIMIT in background
+    [[FuelPriceService sharedService] fetchOnlinePricesAroundCoordinate:CLLocationCoordinate2DMake(45.4642, 9.1900) completion:nil];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -195,8 +199,8 @@
     // 7. TOOLBAR VERTICALE COLLAPSIBLE a destra
     [self setupVerticalToolbar];
 
-    // 8. Selettore Itinerari Multipli in basso
-    self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(30, h - 195, w - 60, 175)];
+    // 8. Selettore Itinerari Multipli in basso (con opzioni al volo No Pedaggio/No Autostrade e costi)
+    self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(24, h - 225, w - 48, 205)];
     self.routeSelector.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     self.routeSelector.delegate = self;
     self.routeSelector.hidden = YES;
@@ -637,7 +641,15 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     [[VoiceGuidanceService sharedService] speak:NLString(@"SEARCHING_ROUTES", @"Ricerca itinerari alternativi...")];
 
     __weak NavigationViewController *weakSelf = self;
-    [[RoutingService sharedService] calculateRoutesFrom:startCoord to:coordinate destinationTitle:title completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
+    BOOL avoidTolls = self.routeSelector ? self.routeSelector.avoidTolls : NO;
+    BOOL avoidHighways = self.routeSelector ? self.routeSelector.avoidHighways : NO;
+    [[RoutingService sharedService] calculateRoutesFrom:startCoord
+                                                     to:coordinate
+                                       destinationTitle:title
+                                             avoidTolls:avoidTolls
+                                          avoidHighways:avoidHighways
+                                         corridorOffset:0.22
+                                             completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
         if (!weakSelf || weakSelf.currentRouteRequestId != thisRequestId) {
             NSLog(@"[NavigationViewController] Itinerario scartato: richiesta annullata o superata.");
             return;
@@ -788,6 +800,10 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     [self recalculateAlternativeRoutes];
 }
 
+- (void)routeSelectorView:(RouteSelectorView *)view didToggleAvoidTolls:(BOOL)avoidTolls avoidHighways:(BOOL)avoidHighways {
+    [self recalculateRoutesWithAvoidTolls:avoidTolls avoidHighways:avoidHighways corridorOffset:0.22];
+}
+
 #pragma mark - Route Summary & Alternative Routes
 
 - (void)showRouteSummary {
@@ -823,6 +839,20 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 }
 
 - (void)recalculateAlternativeRoutes {
+    static int sCorridorCycle = 0;
+    sCorridorCycle++;
+    double offsets[] = { 0.35, -0.30, 0.22, 0.45 };
+    double currentOffset = offsets[sCorridorCycle % 4];
+
+    BOOL avoidTolls = self.routeSelector ? self.routeSelector.avoidTolls : NO;
+    BOOL avoidHighways = self.routeSelector ? self.routeSelector.avoidHighways : NO;
+
+    [self recalculateRoutesWithAvoidTolls:avoidTolls avoidHighways:avoidHighways corridorOffset:currentOffset];
+}
+
+- (void)recalculateRoutesWithAvoidTolls:(BOOL)avoidTolls
+                          avoidHighways:(BOOL)avoidHighways
+                         corridorOffset:(double)currentOffset {
     CLLocationCoordinate2D startCoord;
     if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
         startCoord = self.currentLocation.coordinate;
@@ -851,12 +881,15 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     self.maneuverHUD.hidden = YES;
     self.tripBar.hidden = YES;
 
-    static int sCorridorCycle = 0;
-    sCorridorCycle++;
-    double offsets[] = { 0.35, -0.30, 0.22, 0.45 };
-    double currentOffset = offsets[sCorridorCycle % 4];
-
-    [[VoiceGuidanceService sharedService] speak:NLString(@"SEARCHING_ROUTES", @"Ricerca itinerari alternativi...")];
+    NSString *msg = NLString(@"SEARCHING_ROUTES", @"Ricerca itinerari alternativi...");
+    if (avoidTolls && avoidHighways) {
+        msg = NLString(@"SEARCHING_NO_TOLLS_NO_HWY", @"Ricerca itinerari senza pedaggi e senza autostrade...");
+    } else if (avoidTolls) {
+        msg = NLString(@"SEARCHING_NO_TOLLS", @"Ricerca itinerari senza pedaggio...");
+    } else if (avoidHighways) {
+        msg = NLString(@"SEARCHING_NO_HWY", @"Ricerca itinerari senza autostrade...");
+    }
+    [[VoiceGuidanceService sharedService] speak:msg];
 
     self.currentRouteRequestId++;
     NSUInteger thisRequestId = self.currentRouteRequestId;
@@ -865,6 +898,8 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     [[RoutingService sharedService] calculateRoutesFrom:startCoord
                                                      to:destCoord
                                        destinationTitle:destTitle
+                                             avoidTolls:avoidTolls
+                                          avoidHighways:avoidHighways
                                          corridorOffset:currentOffset
                                              completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
         if (!weakSelf || weakSelf.currentRouteRequestId != thisRequestId) return;
@@ -895,7 +930,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         }
 
         [weakSelf.mapView setVisibleMapRect:routes[0].polyline.boundingMapRect
-                                edgePadding:UIEdgeInsetsMake(120, 60, 220, 60)
+                                edgePadding:UIEdgeInsetsMake(120, 60, 240, 60)
                                    animated:YES];
 
         [weakSelf.routeSelector setRoutes:routes];
@@ -1096,12 +1131,21 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     NSString *title = self.currentRoute.destinationTitle;
 
     __weak NavigationViewController *weakSelf = self;
-    [[RoutingService sharedService] calculateRouteFrom:start to:dest destinationTitle:title completion:^(RouteInfo *newRoute, NSError *error) {
+    BOOL avoidTolls = self.routeSelector ? self.routeSelector.avoidTolls : NO;
+    BOOL avoidHighways = self.routeSelector ? self.routeSelector.avoidHighways : NO;
+    [[RoutingService sharedService] calculateRoutesFrom:start
+                                                     to:dest
+                                       destinationTitle:title
+                                             avoidTolls:avoidTolls
+                                          avoidHighways:avoidHighways
+                                         corridorOffset:0.22
+                                             completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
         if (!weakSelf || weakSelf.currentRouteRequestId != thisRequestId || !weakSelf.isNavigating) {
             NSLog(@"[NavigationViewController] Ricalcolo percorso scartato: richiesta annullata o obsoleta.");
             return;
         }
-        if (error || !newRoute) return;
+        if (error || routes.count == 0) return;
+        RouteInfo *newRoute = routes[0];
 
         // Rimuovi polylines precedenti
         for (id<MKOverlay> overlay in [weakSelf.mapView.overlays copy]) {

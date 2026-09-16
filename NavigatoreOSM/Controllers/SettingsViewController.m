@@ -2,11 +2,15 @@
 #import "Services/NetworkGPSReceiver.h"
 #import "Services/VoiceGuidanceService.h"
 #import "Services/LocalizationManager.h"
+#import "Services/FuelPriceService.h"
 
 @interface SettingsViewController () <UITextFieldDelegate>
 
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, strong) UISegmentedControl *languageSegment;
+@property (nonatomic, strong) UISegmentedControl *fuelTypeSegment;
+@property (nonatomic, strong) UITextField *consumptionTextField;
+@property (nonatomic, strong) UITextField *priceTextField;
 @property (nonatomic, strong) UITextField *portTextField;
 @property (nonatomic, strong) UITextField *ipTextField;
 @property (nonatomic, strong) UISegmentedControl *modeSegment;
@@ -132,6 +136,21 @@
         [VoiceGuidanceService sharedService].isMuted = !self.voiceSwitch.isOn;
     }
 
+    // Salvataggio impostazioni carburante e consumi
+    if (self.fuelTypeSegment) {
+        [FuelPriceService sharedService].selectedFuelType = (FuelType)self.fuelTypeSegment.selectedSegmentIndex;
+    }
+    if (self.consumptionTextField) {
+        NSString *txt = [self.consumptionTextField.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
+        double val = [txt doubleValue];
+        [[FuelPriceService sharedService] setCustomConsumption:val forFuelType:[FuelPriceService sharedService].selectedFuelType];
+    }
+    if (self.priceTextField) {
+        NSString *txt = [self.priceTextField.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
+        double val = [txt doubleValue];
+        [[FuelPriceService sharedService] setCustomPrice:val forFuelType:[FuelPriceService sharedService].selectedFuelType];
+    }
+
     [gps saveSettings];
     [gps startWithSavedSettings];
     [[NSUserDefaults standardUserDefaults] synchronize];
@@ -140,6 +159,67 @@
         [self.delegate settingsViewControllerDidUpdateSettings:self];
     }
     [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+    FuelPriceService *fuel = [FuelPriceService sharedService];
+    FuelType type = fuel.selectedFuelType;
+    if (textField == self.consumptionTextField) {
+        NSString *t = [textField.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
+        double val = [t doubleValue];
+        [fuel setCustomConsumption:val forFuelType:type];
+    } else if (textField == self.priceTextField) {
+        NSString *t = [textField.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
+        double val = [t doubleValue];
+        [fuel setCustomPrice:val forFuelType:type];
+    }
+}
+
+- (void)applyFuelTypeChange:(UISegmentedControl *)sender {
+    [self.view endEditing:YES];
+    FuelType newType = (FuelType)sender.selectedSegmentIndex;
+    [FuelPriceService sharedService].selectedFuelType = newType;
+    if (self.consumptionTextField) {
+        double c = [[FuelPriceService sharedService] effectiveConsumptionForFuelType:newType];
+        self.consumptionTextField.text = [NSString stringWithFormat:@"%.1f", c];
+    }
+    if (self.priceTextField) {
+        double p = [[FuelPriceService sharedService] effectivePriceForFuelType:newType];
+        self.priceTextField.text = [NSString stringWithFormat:@"%.3f", p];
+    }
+    [self.tableView reloadData];
+}
+
+- (void)fetchMIMITPrices {
+    [self.view endEditing:YES];
+    UIAlertController *loading = [UIAlertController alertControllerWithTitle:NLString(@"FETCHING_PRICES", @"MIMIT Carburanti")
+                                                                     message:NLString(@"FETCHING_PRICES_MSG", @"Recupero dei prezzi medi dai distributori in zona...")
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:loading animated:YES completion:nil];
+
+    CLLocationCoordinate2D coord = CLLocationCoordinate2DMake(45.4642, 9.1900);
+    if ([NetworkGPSReceiver sharedReceiver].lastLocation) {
+        coord = [NetworkGPSReceiver sharedReceiver].lastLocation.coordinate;
+    }
+
+    __weak SettingsViewController *weakSelf = self;
+    [[FuelPriceService sharedService] fetchOnlinePricesAroundCoordinate:coord
+                                                             completion:^(BOOL success, NSString *statusMessage) {
+        [loading dismissViewControllerAnimated:YES completion:^{
+            UIAlertController *resultAlert = [UIAlertController alertControllerWithTitle:success ? NLString(@"SUCCESS", @"Completato") : NLString(@"ERROR", @"Errore")
+                                                                                 message:statusMessage
+                                                                          preferredStyle:UIAlertControllerStyleAlert];
+            [resultAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                FuelType cur = [FuelPriceService sharedService].selectedFuelType;
+                if (weakSelf.priceTextField) {
+                    double p = [[FuelPriceService sharedService] effectivePriceForFuelType:cur];
+                    weakSelf.priceTextField.text = [NSString stringWithFormat:@"%.3f", p];
+                }
+                [weakSelf.tableView reloadData];
+            }]];
+            [weakSelf presentViewController:resultAlert animated:YES completion:nil];
+        }];
+    }];
 }
 
 - (void)applyLanguageChange:(UISegmentedControl *)sender {
@@ -180,18 +260,19 @@
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 7; // 0: Versione, 1: Lingua, 2: GPS, 3: Cydia, 4: Voce, 5: Mappa, 6: Chiudi
+    return 8; // 0: Versione, 1: Lingua, 2: Carburante, 3: GPS, 4: Cydia, 5: Voce, 6: Mappa, 7: Chiudi
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 0: return 3; // Versione App, Data Build, Architettura
         case 1: return 1; // Lingua Interfaccia
-        case 2: return 5; // Ricevitore GPS di Rete
-        case 3: return 2; // Repository Cydia OTA
-        case 4: return 1; // Guida Vocale
-        case 5: return 1; // Stile Mappa
-        case 6: return 1; // Pulsante Salva ed Esci
+        case 2: return 4; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT
+        case 3: return 5; // Ricevitore GPS di Rete
+        case 4: return 2; // Repository Cydia OTA
+        case 5: return 1; // Guida Vocale
+        case 6: return 1; // Stile Mappa
+        case 7: return 1; // Pulsante Salva ed Esci
         default: return 0;
     }
 }
@@ -200,11 +281,12 @@
     switch (section) {
         case 0: return NLString(@"SEC_VERSION", @"ℹ️ VERSIONE SOFTWARE & SISTEMA");
         case 1: return NLString(@"SEC_LANGUAGE", @"🌐 LINGUA APPLICAZIONE");
-        case 2: return NLString(@"SEC_GPS", @"🛰️ RICEVITORE GPS DI RETE (DA SMARTPHONE ANDROID)");
-        case 3: return NLString(@"SEC_CYDIA", @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)");
-        case 4: return NLString(@"SEC_VOICE", @"🔊 GUIDA VOCALE");
-        case 5: return NLString(@"SEC_MAP", @"🗺️ MAPPE & ASPETTO");
-        case 6: return nil;
+        case 2: return NLString(@"SEC_FUEL", @"⛽ CARBURANTE & COSTI DI VIAGGIO");
+        case 3: return NLString(@"SEC_GPS", @"🛰️ RICEVITORE GPS DI RETE (DA SMARTPHONE ANDROID)");
+        case 4: return NLString(@"SEC_CYDIA", @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)");
+        case 5: return NLString(@"SEC_VOICE", @"🔊 GUIDA VOCALE");
+        case 6: return NLString(@"SEC_MAP", @"🗺️ MAPPE & ASPETTO");
+        case 7: return nil;
         default: return @"";
     }
 }
@@ -227,8 +309,8 @@
     // SEZIONE 0: Versione Software
     if (indexPath.section == 0) {
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.2";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"20260916.4";
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.3";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"20260916.5";
 
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"APP_VERSION", @"Versione Applicazione");
@@ -264,8 +346,75 @@
         }
         cell.accessoryView = self.languageSegment;
     }
-    // SEZIONE 2: GPS Rete
+    // SEZIONE 2: Carburante & Costi di Viaggio
     else if (indexPath.section == 2) {
+        FuelPriceService *fuel = [FuelPriceService sharedService];
+        FuelType curType = fuel.selectedFuelType;
+
+        if (indexPath.row == 0) {
+            cell.textLabel.text = NLString(@"FUEL_TYPE", @"Tipo Carburante");
+            if (!self.fuelTypeSegment) {
+                self.fuelTypeSegment = [[UISegmentedControl alloc] initWithItems:@[
+                    NLString(@"FUEL_PETROL", @"Benzina"),
+                    NLString(@"FUEL_DIESEL", @"Diesel"),
+                    @"GPL",
+                    NLString(@"FUEL_ELECTRIC", @"Elettrico")
+                ]];
+                [self.fuelTypeSegment addTarget:self action:@selector(applyFuelTypeChange:) forControlEvents:UIControlEventValueChanged];
+                self.fuelTypeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+            }
+            self.fuelTypeSegment.selectedSegmentIndex = curType;
+            cell.accessoryView = self.fuelTypeSegment;
+        } else if (indexPath.row == 1) {
+            NSString *unit = [fuel consumptionUnitForFuelType:curType];
+            cell.textLabel.text = [NSString stringWithFormat:@"%@ (%@)", NLString(@"FUEL_CONSUMPTION", @"Consumo Medio"), unit];
+            if (!self.consumptionTextField) {
+                self.consumptionTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 95, 32)];
+                self.consumptionTextField.textColor = [UIColor whiteColor];
+                self.consumptionTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+                self.consumptionTextField.keyboardType = UIKeyboardTypeDecimalPad;
+                self.consumptionTextField.textAlignment = NSTextAlignmentCenter;
+                self.consumptionTextField.layer.cornerRadius = 6.0;
+                self.consumptionTextField.delegate = self;
+            }
+            double val = [fuel effectiveConsumptionForFuelType:curType];
+            self.consumptionTextField.text = [NSString stringWithFormat:@"%.1f", val];
+            cell.accessoryView = self.consumptionTextField;
+        } else if (indexPath.row == 2) {
+            NSString *unit = (curType == FuelTypeElectric) ? @"€/kWh" : @"€/L";
+            cell.textLabel.text = [NSString stringWithFormat:@"%@ (%@)", NLString(@"FUEL_PRICE", @"Prezzo Carburante"), unit];
+            if (!self.priceTextField) {
+                self.priceTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 95, 32)];
+                self.priceTextField.textColor = [UIColor whiteColor];
+                self.priceTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+                self.priceTextField.keyboardType = UIKeyboardTypeDecimalPad;
+                self.priceTextField.textAlignment = NSTextAlignmentCenter;
+                self.priceTextField.layer.cornerRadius = 6.0;
+                self.priceTextField.delegate = self;
+            }
+            double p = [fuel effectivePriceForFuelType:curType];
+            self.priceTextField.text = [NSString stringWithFormat:@"%.3f", p];
+            cell.accessoryView = self.priceTextField;
+        } else if (indexPath.row == 3) {
+            cell.textLabel.text = NLString(@"UPDATE_ONLINE_PRICES", @"Aggiorna Prezzi Online (MIMIT)");
+            if ([fuel lastOnlinePriceFetchDate]) {
+                static NSDateFormatter *df = nil;
+                if (!df) {
+                    df = [[NSDateFormatter alloc] init];
+                    df.dateStyle = NSDateFormatterShortStyle;
+                    df.timeStyle = NSDateFormatterShortStyle;
+                }
+                cell.detailTextLabel.text = [NSString stringWithFormat:@"Agg. %@", [df stringFromDate:[fuel lastOnlinePriceFetchDate]]];
+            } else {
+                cell.detailTextLabel.text = NLString(@"TAP_TO_UPDATE", @"Tocca per aggiornare");
+            }
+            cell.detailTextLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        }
+    }
+    // SEZIONE 3: GPS Rete
+    else if (indexPath.section == 3) {
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"PROTOCOL", @"Protocollo Ricezione");
             if (!self.modeSegment) {
@@ -329,8 +478,8 @@
             self.diagLocationLabel = cell.detailTextLabel;
         }
     }
-    // SEZIONE 3: Cydia Repo OTA
-    else if (indexPath.section == 3) {
+    // SEZIONE 4: Cydia Repo OTA
+    else if (indexPath.section == 4) {
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"CYDIA_SOURCE", @"Sorgente Cydia");
             cell.detailTextLabel.text = @"https://vibe-maribit.github.io/NavigatorOSM/";
@@ -343,8 +492,8 @@
             cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.7 alpha:1.0];
         }
     }
-    // SEZIONE 4: Guida Vocale
-    else if (indexPath.section == 4) {
+    // SEZIONE 5: Guida Vocale
+    else if (indexPath.section == 5) {
         cell.textLabel.text = NLString(@"VOICE_SWITCH", @"Attiva Istruzioni Vocali");
         if (!self.voiceSwitch) {
             self.voiceSwitch = [[UISwitch alloc] init];
@@ -353,8 +502,8 @@
         }
         cell.accessoryView = self.voiceSwitch;
     }
-    // SEZIONE 5: Stile Mappa
-    else if (indexPath.section == 5) {
+    // SEZIONE 6: Stile Mappa
+    else if (indexPath.section == 6) {
         cell.textLabel.text = NLString(@"MAP_STYLE", @"Stile Mappa");
         if (!self.themeSegment) {
             self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[
@@ -367,8 +516,8 @@
         }
         cell.accessoryView = self.themeSegment;
     }
-    // SEZIONE 6: Pulsante Salva ed Esci (footer)
-    else if (indexPath.section == 6) {
+    // SEZIONE 7: Pulsante Salva ed Esci (footer)
+    else if (indexPath.section == 7) {
         cell.textLabel.text = NLString(@"SAVE_EXIT", @"💾 Salva ed Esci");
         cell.textLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
         cell.textLabel.font = [UIFont boldSystemFontOfSize:17.0];
@@ -382,10 +531,13 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == 3 && indexPath.row == 0) {
+    if (indexPath.section == 2 && indexPath.row == 3) {
+        [self fetchMIMITPrices];
+    }
+    if (indexPath.section == 4 && indexPath.row == 0) {
         [self copyCydiaRepoURL];
     }
-    if (indexPath.section == 6 && indexPath.row == 0) {
+    if (indexPath.section == 7 && indexPath.row == 0) {
         [self handleClose];
     }
 }

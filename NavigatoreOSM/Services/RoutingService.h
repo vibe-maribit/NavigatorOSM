@@ -28,6 +28,14 @@
 @property (nonatomic, copy) NSString *deltaDescription;
 @property (nonatomic, assign) NSUInteger routeIndex;
 @property (nonatomic, assign) BOOL isPrimary;
+@property (nonatomic, assign) BOOL hasToll;
+@property (nonatomic, assign) BOOL hasHighway;
+@property (nonatomic, assign) double fuelCost;
+@property (nonatomic, assign) double tollCost;
+@property (nonatomic, assign) double totalTripCost;
+
+- (void)updateTripCosts;
+- (NSString *)formattedCostSummary;
 
 @end
 
@@ -37,6 +45,15 @@ typedef void (^RoutesCompletionBlock)(NSArray<RouteInfo *> *routes, NSError *err
 @interface RoutingService : NSObject
 
 + (instancetype)sharedService;
+
+/// Calcola itinerari con opzioni on-the-fly di esclusione pedaggi e autostrade
+- (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
+                         to:(CLLocationCoordinate2D)destination
+           destinationTitle:(NSString *)title
+                 avoidTolls:(BOOL)avoidTolls
+              avoidHighways:(BOOL)avoidHighways
+             corridorOffset:(double)offsetRatio
+                 completion:(RoutesCompletionBlock)completion;
 
 /// Calcola itinerari multipli alternativi con traffico/annotazioni
 - (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
@@ -58,3 +75,4 @@ typedef void (^RoutesCompletionBlock)(NSArray<RouteInfo *> *routes, NSError *err
                 completion:(RouteCompletionBlock)completion;
 
 @end
+

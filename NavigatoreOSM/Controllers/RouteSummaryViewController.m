@@ -25,12 +25,15 @@ static NSString *ArrowSymbolForStep(ManeuverStep *step) {
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *destinationLabel;
 @property (nonatomic, strong) UIButton *topCloseButton;
+@property (nonatomic, strong) UIView *headerSeparator;
 
 @property (nonatomic, strong) UIView *metricsView;
 @property (nonatomic, strong) UILabel *timeLabel;
 @property (nonatomic, strong) UILabel *distanceLabel;
 @property (nonatomic, strong) UILabel *trafficLabel;
+@property (nonatomic, strong) UILabel *costLabel;
 @property (nonatomic, strong) UILabel *stepsCountLabel;
+@property (nonatomic, strong) UIView *metricsSeparator;
 
 @property (nonatomic, strong) UITableView *tableView;
 
@@ -38,6 +41,7 @@ static NSString *ArrowSymbolForStep(ManeuverStep *step) {
 @property (nonatomic, strong) UIButton *recalculateButton;
 @property (nonatomic, strong) UIButton *repeatVoiceButton;
 @property (nonatomic, strong) UIButton *closeButton;
+@property (nonatomic, strong) UIView *bottomSeparator;
 
 @end
 
@@ -73,46 +77,85 @@ static NSString *ArrowSymbolForStep(ManeuverStep *step) {
     [self scrollToCurrentStep];
 }
 
-- (void)setupHeader {
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
     CGFloat w = self.view.bounds.size.width;
-    _headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 64)];
-    _headerView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    CGFloat h = self.view.bounds.size.height;
+    if (w <= 0 || h <= 0) return;
+
+    // 1. Header
+    CGFloat headerH = 64.0;
+    _headerView.frame = CGRectMake(0, 0, w, headerH);
+    _titleLabel.frame = CGRectMake(20, 10, w - 75, 24);
+    _destinationLabel.frame = CGRectMake(20, 36, w - 75, 20);
+    _topCloseButton.frame = CGRectMake(w - 50, 12, 40, 40);
+    _headerSeparator.frame = CGRectMake(0, headerH - 1, w, 1);
+
+    // 2. Metrics (78px per ospitare comodamente durata, distanza, traffico, costi carburante/pedaggio e passaggi)
+    CGFloat metricsH = 78.0;
+    _metricsView.frame = CGRectMake(0, headerH, w, metricsH);
+    CGFloat colW = floor((w - 32.0) / 3.0);
+    _timeLabel.frame = CGRectMake(16, 8, colW, 22);
+    _distanceLabel.frame = CGRectMake(16 + colW, 8, colW, 22);
+    _trafficLabel.frame = CGRectMake(16 + colW * 2, 8, w - 16 - (16 + colW * 2), 22);
+    _costLabel.frame = CGRectMake(16, 32, w - 32, 20);
+    _stepsCountLabel.frame = CGRectMake(16, 54, w - 32, 18);
+    _metricsSeparator.frame = CGRectMake(0, metricsH - 1, w, 1);
+
+    // 3. Bottom Action Bar (altezza 70px)
+    CGFloat bottomH = 70.0;
+    _bottomBar.frame = CGRectMake(0, h - bottomH, w, bottomH);
+    _bottomSeparator.frame = CGRectMake(0, 0, w, 1);
+
+    // Layout esplicito dei 3 pulsanti proporzionato alla larghezza REALE della view (risolve sovrapposizioni Issue #4)
+    CGFloat btnH = 46.0;
+    CGFloat spacing = 8.0;
+    CGFloat usableW = w - 32.0 - (spacing * 2.0);
+    CGFloat recalcW = round(usableW * 0.46);
+    CGFloat voiceW = round(usableW * 0.30);
+    CGFloat closeW = usableW - recalcW - voiceW;
+
+    _recalculateButton.frame = CGRectMake(16, 12, recalcW, btnH);
+    _repeatVoiceButton.frame = CGRectMake(16 + recalcW + spacing, 12, voiceW, btnH);
+    _closeButton.frame = CGRectMake(16 + recalcW + spacing + voiceW + spacing, 12, closeW, btnH);
+
+    // 4. Table View (riempie tutto lo spazio tra metrics e bottom bar)
+    CGFloat tableY = headerH + metricsH;
+    _tableView.frame = CGRectMake(0, tableY, w, h - tableY - bottomH);
+}
+
+- (void)setupHeader {
+    _headerView = [[UIView alloc] initWithFrame:CGRectZero];
     _headerView.backgroundColor = [UIColor colorWithWhite:0.14 alpha:1.0];
     [self.view addSubview:_headerView];
 
-    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, w - 80, 24)];
-    _titleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
     _titleLabel.textColor = [UIColor whiteColor];
     _titleLabel.text = NLString(@"ROUTE_SUMMARY", @"📋 Riepilogo Itinerario");
     [_headerView addSubview:_titleLabel];
 
-    _destinationLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 36, w - 80, 20)];
-    _destinationLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    _destinationLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _destinationLabel.font = [UIFont systemFontOfSize:13.0];
     _destinationLabel.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
     _destinationLabel.text = self.route.destinationTitle ?: @"Destinazione";
     [_headerView addSubview:_destinationLabel];
 
     _topCloseButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _topCloseButton.frame = CGRectMake(w - 52, 12, 40, 40);
-    _topCloseButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     [_topCloseButton setTitle:@"✕" forState:UIControlStateNormal];
     [_topCloseButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     _topCloseButton.titleLabel.font = [UIFont boldSystemFontOfSize:20.0];
     [_topCloseButton addTarget:self action:@selector(handleClose) forControlEvents:UIControlEventTouchUpInside];
     [_headerView addSubview:_topCloseButton];
 
-    UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(0, 63, w, 1)];
-    sep.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    sep.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
-    [_headerView addSubview:sep];
+    _headerSeparator = [[UIView alloc] initWithFrame:CGRectZero];
+    _headerSeparator.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+    [_headerView addSubview:_headerSeparator];
 }
 
 - (void)setupMetrics {
-    CGFloat w = self.view.bounds.size.width;
-    _metricsView = [[UIView alloc] initWithFrame:CGRectMake(0, 64, w, 68)];
-    _metricsView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    _metricsView = [[UIView alloc] initWithFrame:CGRectZero];
     _metricsView.backgroundColor = [UIColor colorWithWhite:0.16 alpha:1.0];
     [self.view addSubview:_metricsView];
 
@@ -126,82 +169,84 @@ static NSString *ArrowSymbolForStep(ManeuverStep *step) {
         distStr = [NSString stringWithFormat:@"📍 %d m", (int)self.route.totalDistance];
     }
 
-    CGFloat itemW = (w - 32) / 3.0;
-
-    _timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 10, itemW, 26)];
-    _timeLabel.font = [UIFont boldSystemFontOfSize:18.0];
+    _timeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _timeLabel.font = [UIFont boldSystemFontOfSize:17.0];
     _timeLabel.textColor = [UIColor colorWithRed:0.2 green:0.8 blue:0.4 alpha:1.0];
     _timeLabel.text = timeStr;
+    _timeLabel.adjustsFontSizeToFitWidth = YES;
+    _timeLabel.minimumScaleFactor = 0.75;
     [_metricsView addSubview:_timeLabel];
 
-    _distanceLabel = [[UILabel alloc] initWithFrame:CGRectMake(16 + itemW, 10, itemW, 26)];
-    _distanceLabel.font = [UIFont boldSystemFontOfSize:18.0];
+    _distanceLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _distanceLabel.font = [UIFont boldSystemFontOfSize:17.0];
     _distanceLabel.textColor = [UIColor colorWithRed:0.3 green:0.75 blue:1.0 alpha:1.0];
     _distanceLabel.text = distStr;
+    _distanceLabel.adjustsFontSizeToFitWidth = YES;
+    _distanceLabel.minimumScaleFactor = 0.75;
     [_metricsView addSubview:_distanceLabel];
 
-    _trafficLabel = [[UILabel alloc] initWithFrame:CGRectMake(16 + itemW * 2, 10, itemW, 26)];
-    _trafficLabel.font = [UIFont boldSystemFontOfSize:14.0];
-    _trafficLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    _trafficLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _trafficLabel.font = [UIFont boldSystemFontOfSize:13.0];
+    _trafficLabel.textColor = [UIColor colorWithWhite:0.92 alpha:1.0];
     _trafficLabel.text = self.route.trafficDescription ?: @"🟢 Regolare";
+    _trafficLabel.adjustsFontSizeToFitWidth = YES;
+    _trafficLabel.minimumScaleFactor = 0.70;
     [_metricsView addSubview:_trafficLabel];
 
-    _stepsCountLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 40, w - 32, 20)];
-    _stepsCountLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    // Aggiorna costi carburante e pedaggio
+    if (self.route.totalTripCost <= 0.01) {
+        [self.route updateTripCosts];
+    }
+    NSString *tollStr = self.route.tollCost > 0.05
+        ? [NSString stringWithFormat:@"🛣️ %.2f €", self.route.tollCost]
+        : NLString(@"NO_TOLLS", @"🛣️ Senza pedaggio");
+
+    _costLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _costLabel.font = [UIFont systemFontOfSize:12.5];
+    _costLabel.textColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.3 alpha:1.0];
+    _costLabel.text = [NSString stringWithFormat:@"⛽ %.2f € • %@ • Tot. %.2f €",
+                       self.route.fuelCost, tollStr, self.route.totalTripCost];
+    _costLabel.adjustsFontSizeToFitWidth = YES;
+    _costLabel.minimumScaleFactor = 0.75;
+    [_metricsView addSubview:_costLabel];
+
+    _stepsCountLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _stepsCountLabel.font = [UIFont systemFontOfSize:12.0];
-    _stepsCountLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
+    _stepsCountLabel.textColor = [UIColor colorWithWhite:0.65 alpha:1.0];
     _stepsCountLabel.text = [NSString stringWithFormat:@"%lu %@ • %@",
                              (unsigned long)self.route.steps.count,
                              NLString(@"STEPS", @"Passaggi"),
                              self.route.badgeTitle ?: @""];
+    _stepsCountLabel.adjustsFontSizeToFitWidth = YES;
+    _stepsCountLabel.minimumScaleFactor = 0.8;
     [_metricsView addSubview:_stepsCountLabel];
 
-    UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(0, 67, w, 1)];
-    sep.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    sep.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
-    [_metricsView addSubview:sep];
+    _metricsSeparator = [[UIView alloc] initWithFrame:CGRectZero];
+    _metricsSeparator.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+    [_metricsView addSubview:_metricsSeparator];
 }
 
 - (void)setupBottomBar {
-    CGFloat w = self.view.bounds.size.width;
-    CGFloat h = self.view.bounds.size.height;
-    CGFloat barH = 68.0;
-
-    _bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, h - barH, w, barH)];
-    _bottomBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    _bottomBar = [[UIView alloc] initWithFrame:CGRectZero];
     _bottomBar.backgroundColor = [UIColor colorWithWhite:0.14 alpha:1.0];
     [self.view addSubview:_bottomBar];
 
-    UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 1)];
-    sep.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    sep.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
-    [_bottomBar addSubview:sep];
-
-    CGFloat btnH = 46.0;
-    CGFloat spacing = 10.0;
-    CGFloat totalW = w - 32.0;
-    CGFloat usableW = totalW - spacing * 2.0;
-
-    CGFloat recalcW = round(usableW * 0.50);
-    CGFloat voiceW = round(usableW * 0.28);
-    CGFloat closeW = usableW - recalcW - voiceW;
+    _bottomSeparator = [[UIView alloc] initWithFrame:CGRectZero];
+    _bottomSeparator.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+    [_bottomBar addSubview:_bottomSeparator];
 
     _recalculateButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _recalculateButton.frame = CGRectMake(16, 11, recalcW, btnH);
-    _recalculateButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
     _recalculateButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.48 blue:0.95 alpha:1.0];
     _recalculateButton.layer.cornerRadius = 10.0;
-    [_recalculateButton setTitle:NLString(@"FIND_MORE_ROUTES", @"🔄 Ricalcola / Altri itinerari") forState:UIControlStateNormal];
+    [_recalculateButton setTitle:NLString(@"FIND_MORE_ROUTES", @"🔄 Ricalcola / Altri") forState:UIControlStateNormal];
     [_recalculateButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    _recalculateButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
+    _recalculateButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
     _recalculateButton.titleLabel.adjustsFontSizeToFitWidth = YES;
-    _recalculateButton.titleLabel.minimumScaleFactor = 0.7;
+    _recalculateButton.titleLabel.minimumScaleFactor = 0.65;
     [_recalculateButton addTarget:self action:@selector(handleRecalculate) forControlEvents:UIControlEventTouchUpInside];
     [_bottomBar addSubview:_recalculateButton];
 
     _repeatVoiceButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _repeatVoiceButton.frame = CGRectMake(16 + recalcW + spacing, 11, voiceW, btnH);
-    _repeatVoiceButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
     _repeatVoiceButton.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
     _repeatVoiceButton.layer.cornerRadius = 10.0;
     [_repeatVoiceButton setTitle:NLString(@"REPEAT_VOICE", @"🔊 Ripeti voce") forState:UIControlStateNormal];
@@ -213,26 +258,19 @@ static NSString *ArrowSymbolForStep(ManeuverStep *step) {
     [_bottomBar addSubview:_repeatVoiceButton];
 
     _closeButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _closeButton.frame = CGRectMake(16 + recalcW + spacing + voiceW + spacing, 11, closeW, btnH);
-    _closeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     _closeButton.backgroundColor = [UIColor colorWithWhite:0.20 alpha:1.0];
     _closeButton.layer.cornerRadius = 10.0;
     [_closeButton setTitle:NLString(@"CLOSE", @"✕ Chiudi") forState:UIControlStateNormal];
     [_closeButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     _closeButton.titleLabel.font = [UIFont systemFontOfSize:13.0];
     _closeButton.titleLabel.adjustsFontSizeToFitWidth = YES;
+    _closeButton.titleLabel.minimumScaleFactor = 0.7;
     [_closeButton addTarget:self action:@selector(handleClose) forControlEvents:UIControlEventTouchUpInside];
     [_bottomBar addSubview:_closeButton];
 }
 
 - (void)setupTableView {
-    CGFloat w = self.view.bounds.size.width;
-    CGFloat h = self.view.bounds.size.height;
-    CGFloat topY = 64 + 68;
-    CGFloat bottomH = 68;
-
-    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, topY, w, h - topY - bottomH) style:UITableViewStylePlain];
-    _tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     _tableView.backgroundColor = [UIColor colorWithWhite:0.11 alpha:1.0];
     _tableView.separatorColor = [UIColor colorWithWhite:0.22 alpha:1.0];
     _tableView.dataSource = self;
@@ -250,9 +288,22 @@ static NSString *ArrowSymbolForStep(ManeuverStep *step) {
 
 - (void)handleLanguageChanged {
     _titleLabel.text = NLString(@"ROUTE_SUMMARY", @"📋 Riepilogo Itinerario");
-    [_recalculateButton setTitle:NLString(@"FIND_MORE_ROUTES", @"🔄 Ricalcola / Altri itinerari") forState:UIControlStateNormal];
+    [_recalculateButton setTitle:NLString(@"FIND_MORE_ROUTES", @"🔄 Ricalcola / Altri") forState:UIControlStateNormal];
     [_repeatVoiceButton setTitle:NLString(@"REPEAT_VOICE", @"🔊 Ripeti voce") forState:UIControlStateNormal];
     [_closeButton setTitle:NLString(@"CLOSE", @"✕ Chiudi") forState:UIControlStateNormal];
+
+    if (self.route.totalTripCost <= 0.01) {
+        [self.route updateTripCosts];
+    }
+    NSString *tollStr = self.route.tollCost > 0.05
+        ? [NSString stringWithFormat:@"🛣️ %.2f €", self.route.tollCost]
+        : NLString(@"NO_TOLLS", @"🛣️ Senza pedaggio");
+    _costLabel.text = [NSString stringWithFormat:@"⛽ %.2f € • %@ • Tot. %.2f €",
+                       self.route.fuelCost, tollStr, self.route.totalTripCost];
+    _stepsCountLabel.text = [NSString stringWithFormat:@"%lu %@ • %@",
+                             (unsigned long)self.route.steps.count,
+                             NLString(@"STEPS", @"Passaggi"),
+                             self.route.badgeTitle ?: @""];
     [_tableView reloadData];
 }
 

@@ -49,6 +49,9 @@ Millions of legacy Apple tablets—especially the **iPad Mini 1st Gen (A1432 / M
 | ⛽ **Quick POI Shelf & Custom Search** | 1-touch search for Gas Stations (`⛽`), Parking (`🅿️`), Coffee/Food (`☕`), and Restaurants (`🍴`) with interactive map pins and distance cards. |
 | 📱 **Android GPS Tether Companion** | Broadcasts smartphone GPS coordinates over Wi-Fi hotspot to Wi-Fi-only iPads via UDP broadcast (`:8888`) or TCP client. |
 | 📲 **Cydia OTA Wireless Updates** | Official Cydia repository hosted on GitHub Pages for 1-tap wireless installations and updates over Wi-Fi. |
+| ⛽ **Fuel & Toll Trip Cost** | Real-time travel cost estimation (fuel consumption based on engine: Petrol, Diesel, LPG, EV; highway toll fees) with live Italian MIMIT online fuel prices and custom manual overrides. |
+| 🚫 **Avoid Tolls & Highways On-the-Fly** | Instant quick toggle chips directly on the route selection card to avoid toll roads and motorways via multi-provider routing (OSRM / Valhalla). |
+| 📋 **Interactive Route Summary Sheet** | Turn-by-turn itinerary modal with total distance, duration, trip cost breakdown, repeat last voice guidance, and on-demand alternative route recalculation. |
 | 🌐 **Multi-Language (EN / IT)** | Full bilingual support (English & Italian) with automatic system language detection and manual toggle in Settings. Clean architecture designed for easy community translations. |
 | 🔌 **Always-On Driving Display** | `UIApplication.idleTimerDisabled = YES` prevents the screen from sleeping while driving. |
 

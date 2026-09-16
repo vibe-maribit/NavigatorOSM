@@ -2,13 +2,26 @@
 #import "../Services/LocalizationManager.h"
 
 @interface RouteSelectorView ()
+
 @property (nonatomic, strong) NSArray<RouteInfo *> *routes;
 @property (nonatomic, assign) NSUInteger selectedIndex;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *routeButtons;
+
+// Barra opzioni al volo
+@property (nonatomic, strong) UIView *optionsBar;
+@property (nonatomic, strong) UILabel *optionsLabel;
+@property (nonatomic, strong) UIButton *tollsChipButton;
+@property (nonatomic, strong) UIButton *highwaysChipButton;
+@property (nonatomic, strong) UILabel *costSummaryLabel;
+
+// Schede percorsi
+@property (nonatomic, strong) UIView *buttonsContainer;
+
+// Barra comandi inferiore
 @property (nonatomic, strong) UIButton *startButton;
 @property (nonatomic, strong) UIButton *recalcButton;
 @property (nonatomic, strong) UIButton *cancelButton;
-@property (nonatomic, strong) UIView *buttonsContainer;
+
 @end
 
 @implementation RouteSelectorView
@@ -31,51 +44,82 @@
 
         _routeButtons = [NSMutableArray array];
         _selectedIndex = 0;
+        _avoidTolls = NO;
+        _avoidHighways = NO;
 
-        _buttonsContainer = [[UIView alloc] initWithFrame:CGRectMake(16, 12, frame.size.width - 32, frame.size.height - 75)];
-        _buttonsContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        // 1. Barra opzioni rapide in alto (Opzioni "al volo")
+        _optionsBar = [[UIView alloc] initWithFrame:CGRectZero];
+        [self addSubview:_optionsBar];
+
+        _optionsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _optionsLabel.font = [UIFont boldSystemFontOfSize:12.0];
+        _optionsLabel.textColor = [UIColor colorWithWhite:0.65 alpha:1.0];
+        _optionsLabel.text = NLString(@"ROUTE_OPTIONS", @"Opzioni:");
+        [_optionsBar addSubview:_optionsLabel];
+
+        // Chip No Pedaggio
+        _tollsChipButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        _tollsChipButton.layer.cornerRadius = 8.0;
+        _tollsChipButton.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
+        [_tollsChipButton setTitle:NLString(@"AVOID_TOLLS", @"🚫 No Pedaggio") forState:UIControlStateNormal];
+        [_tollsChipButton addTarget:self action:@selector(handleTollsToggled) forControlEvents:UIControlEventTouchUpInside];
+        [_optionsBar addSubview:_tollsChipButton];
+
+        // Chip No Autostrade
+        _highwaysChipButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        _highwaysChipButton.layer.cornerRadius = 8.0;
+        _highwaysChipButton.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
+        [_highwaysChipButton setTitle:NLString(@"AVOID_HIGHWAYS", @"🛣️ No Autostrade") forState:UIControlStateNormal];
+        [_highwaysChipButton addTarget:self action:@selector(handleHighwaysToggled) forControlEvents:UIControlEventTouchUpInside];
+        [_optionsBar addSubview:_highwaysChipButton];
+
+        // Etichetta riassuntiva del costo del percorso selezionato
+        _costSummaryLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _costSummaryLabel.font = [UIFont boldSystemFontOfSize:12.0];
+        _costSummaryLabel.textAlignment = NSTextAlignmentRight;
+        _costSummaryLabel.textColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.3 alpha:1.0];
+        [_optionsBar addSubview:_costSummaryLabel];
+
+        [self updateToggleAppearances];
+
+        // 2. Contenitore card itinerari
+        _buttonsContainer = [[UIView alloc] initWithFrame:CGRectZero];
         [self addSubview:_buttonsContainer];
 
-        CGFloat totalW = frame.size.width - 32.0;
-        CGFloat spacing = 10.0;
-        CGFloat usableW = totalW - spacing * 2.0;
-        CGFloat startW = round(usableW * 0.50);
-        CGFloat recalcW = round(usableW * 0.30);
-        CGFloat cancelW = usableW - startW - recalcW;
-
+        // 3. Pulsanti azione in basso
         // Pulsante verde "Avvia Navigazione"
         _startButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        _startButton.frame = CGRectMake(16, frame.size.height - 58, startW, 46);
-        _startButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
         _startButton.backgroundColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
         _startButton.layer.cornerRadius = 12.0;
         [_startButton setTitle:NLString(@"START_NAVIGATION", @"▶ Avvia Navigazione") forState:UIControlStateNormal];
         [_startButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        _startButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
+        _startButton.titleLabel.font = [UIFont boldSystemFontOfSize:15.5];
+        _startButton.titleLabel.adjustsFontSizeToFitWidth = YES;
+        _startButton.titleLabel.minimumScaleFactor = 0.7;
         [_startButton addTarget:self action:@selector(handleStart) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_startButton];
 
         // Pulsante blu "🔄 Altri" (Cerca itinerari alternativi)
         _recalcButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        _recalcButton.frame = CGRectMake(16 + startW + spacing, frame.size.height - 58, recalcW, 46);
-        _recalcButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
         _recalcButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.48 blue:0.95 alpha:0.95];
         _recalcButton.layer.cornerRadius = 12.0;
         [_recalcButton setTitle:NLString(@"MORE_ROUTES", @"🔄 Altri") forState:UIControlStateNormal];
         [_recalcButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        _recalcButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
+        _recalcButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+        _recalcButton.titleLabel.adjustsFontSizeToFitWidth = YES;
+        _recalcButton.titleLabel.minimumScaleFactor = 0.7;
         [_recalcButton addTarget:self action:@selector(handleRecalculate) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_recalcButton];
 
         // Pulsante grigio "Annulla"
         _cancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        _cancelButton.frame = CGRectMake(16 + startW + spacing + recalcW + spacing, frame.size.height - 58, cancelW, 46);
-        _cancelButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
         _cancelButton.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.9];
         _cancelButton.layer.cornerRadius = 12.0;
         [_cancelButton setTitle:NLString(@"CANCEL", @"Annulla") forState:UIControlStateNormal];
         [_cancelButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        _cancelButton.titleLabel.font = [UIFont systemFontOfSize:14.0];
+        _cancelButton.titleLabel.font = [UIFont systemFontOfSize:13.5];
+        _cancelButton.titleLabel.adjustsFontSizeToFitWidth = YES;
+        _cancelButton.titleLabel.minimumScaleFactor = 0.7;
         [_cancelButton addTarget:self action:@selector(handleCancel) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_cancelButton];
 
@@ -87,10 +131,128 @@
     return self;
 }
 
+- (void)layoutSubviews {
+    [super layoutSubviews];
+
+    CGFloat w = self.bounds.size.width;
+    CGFloat h = self.bounds.size.height;
+    if (w <= 0 || h <= 0) return;
+
+    // Barra opzioni in alto (y: 8, h: 30)
+    _optionsBar.frame = CGRectMake(16, 8, w - 32, 30);
+    _optionsLabel.frame = CGRectMake(0, 5, 55, 20);
+
+    CGFloat chipW = 120.0;
+    _tollsChipButton.frame = CGRectMake(60, 2, chipW, 26);
+    _highwaysChipButton.frame = CGRectMake(60 + chipW + 8, 2, 130, 26);
+
+    CGFloat costX = 60 + chipW + 8 + 130 + 8;
+    CGFloat costW = (w - 32) - costX;
+    if (costW > 80) {
+        _costSummaryLabel.frame = CGRectMake(costX, 5, costW, 20);
+        _costSummaryLabel.hidden = NO;
+    } else {
+        _costSummaryLabel.hidden = YES;
+    }
+
+    // Barra comandi in basso (y: h - 54, h: 44)
+    CGFloat bottomH = 44.0;
+    CGFloat totalW = w - 32.0;
+    CGFloat spacing = 8.0;
+    CGFloat usableW = totalW - spacing * 2.0;
+    CGFloat startW = round(usableW * 0.48);
+    CGFloat recalcW = round(usableW * 0.28);
+    CGFloat cancelW = usableW - startW - recalcW;
+
+    _startButton.frame = CGRectMake(16, h - 54, startW, bottomH);
+    _recalcButton.frame = CGRectMake(16 + startW + spacing, h - 54, recalcW, bottomH);
+    _cancelButton.frame = CGRectMake(16 + startW + spacing + recalcW + spacing, h - 54, cancelW, bottomH);
+
+    // Contenitore card itinerari tra la barra opzioni e la barra comandi
+    CGFloat containerY = 42.0;
+    CGFloat containerH = (h - 54 - 6) - containerY;
+    _buttonsContainer.frame = CGRectMake(16, containerY, w - 32, containerH);
+
+    // Ricalcola layout dei pulsanti percorso
+    if (self.routeButtons.count > 0) {
+        CGFloat countF = (CGFloat)self.routeButtons.count;
+        CGFloat cardSpacing = 8.0;
+        CGFloat cardW = floor(((w - 32) - (countF - 1.0) * cardSpacing) / countF);
+        for (NSUInteger i = 0; i < self.routeButtons.count; i++) {
+            UIButton *btn = self.routeButtons[i];
+            btn.frame = CGRectMake(i * (cardW + cardSpacing), 0, cardW, containerH);
+        }
+    }
+}
+
+- (void)updateToggleAppearances {
+    if (self.avoidTolls) {
+        _tollsChipButton.backgroundColor = [UIColor colorWithRed:0.85 green:0.45 blue:0.1 alpha:1.0];
+        _tollsChipButton.layer.borderColor = [[UIColor whiteColor] CGColor];
+        _tollsChipButton.layer.borderWidth = 1.5;
+        [_tollsChipButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    } else {
+        _tollsChipButton.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.8];
+        _tollsChipButton.layer.borderColor = [[UIColor colorWithWhite:0.4 alpha:0.5] CGColor];
+        _tollsChipButton.layer.borderWidth = 1.0;
+        [_tollsChipButton setTitleColor:[UIColor colorWithWhite:0.85 alpha:1.0] forState:UIControlStateNormal];
+    }
+
+    if (self.avoidHighways) {
+        _highwaysChipButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.55 blue:0.85 alpha:1.0];
+        _highwaysChipButton.layer.borderColor = [[UIColor whiteColor] CGColor];
+        _highwaysChipButton.layer.borderWidth = 1.5;
+        [_highwaysChipButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    } else {
+        _highwaysChipButton.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.8];
+        _highwaysChipButton.layer.borderColor = [[UIColor colorWithWhite:0.4 alpha:0.5] CGColor];
+        _highwaysChipButton.layer.borderWidth = 1.0;
+        [_highwaysChipButton setTitleColor:[UIColor colorWithWhite:0.85 alpha:1.0] forState:UIControlStateNormal];
+    }
+}
+
+- (void)resetToggles {
+    self.avoidTolls = NO;
+    self.avoidHighways = NO;
+    [self updateToggleAppearances];
+}
+
+- (void)handleTollsToggled {
+    self.avoidTolls = !self.avoidTolls;
+    [self updateToggleAppearances];
+
+    if ([self.delegate respondsToSelector:@selector(routeSelectorView:didToggleAvoidTolls:avoidHighways:)]) {
+        [self.delegate routeSelectorView:self didToggleAvoidTolls:self.avoidTolls avoidHighways:self.avoidHighways];
+    }
+}
+
+- (void)handleHighwaysToggled {
+    self.avoidHighways = !self.avoidHighways;
+    [self updateToggleAppearances];
+
+    if ([self.delegate respondsToSelector:@selector(routeSelectorView:didToggleAvoidTolls:avoidHighways:)]) {
+        [self.delegate routeSelectorView:self didToggleAvoidTolls:self.avoidTolls avoidHighways:self.avoidHighways];
+    }
+}
+
 - (void)handleLanguageChanged {
     [self.startButton setTitle:NLString(@"START_NAVIGATION", @"▶ Avvia Navigazione") forState:UIControlStateNormal];
     [self.recalcButton setTitle:NLString(@"MORE_ROUTES", @"🔄 Altri") forState:UIControlStateNormal];
     [self.cancelButton setTitle:NLString(@"CANCEL", @"Annulla") forState:UIControlStateNormal];
+    [self.tollsChipButton setTitle:NLString(@"AVOID_TOLLS", @"🚫 No Pedaggio") forState:UIControlStateNormal];
+    [self.highwaysChipButton setTitle:NLString(@"AVOID_HIGHWAYS", @"🛣️ No Autostrade") forState:UIControlStateNormal];
+    self.optionsLabel.text = NLString(@"ROUTE_OPTIONS", @"Opzioni:");
+    [self updateCostSummary];
+}
+
+- (void)updateCostSummary {
+    if (self.selectedIndex < self.routes.count) {
+        RouteInfo *r = self.routes[self.selectedIndex];
+        if (r.totalTripCost <= 0.01) [r updateTripCosts];
+        self.costSummaryLabel.text = [NSString stringWithFormat:@"€ %.2f (Tot)", r.totalTripCost];
+    } else {
+        self.costSummaryLabel.text = @"";
+    }
 }
 
 - (void)setRoutes:(NSArray<RouteInfo *> *)routes {
@@ -102,42 +264,55 @@
     }
     [self.routeButtons removeAllObjects];
 
-    if (routes.count == 0) return;
+    if (routes.count == 0) {
+        [self updateCostSummary];
+        return;
+    }
 
     CGFloat containerW = self.buttonsContainer.bounds.size.width;
-    CGFloat itemW = (containerW - (CGFloat)(routes.count - 1) * 10.0) / (CGFloat)routes.count;
-    CGFloat itemH = self.buttonsContainer.bounds.size.height;
+    if (containerW <= 0) containerW = self.bounds.size.width - 32.0;
+    CGFloat containerH = self.buttonsContainer.bounds.size.height;
+    if (containerH <= 0) containerH = 92.0;
+
+    CGFloat cardSpacing = 8.0;
+    CGFloat itemW = floor((containerW - (CGFloat)(routes.count - 1) * cardSpacing) / (CGFloat)routes.count);
 
     for (NSUInteger i = 0; i < routes.count; i++) {
         RouteInfo *r = routes[i];
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
-        btn.frame = CGRectMake(i * (itemW + 10.0), 0, itemW, itemH);
-        btn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        btn.frame = CGRectMake(i * (itemW + cardSpacing), 0, itemW, containerH);
         btn.layer.cornerRadius = 12.0;
         btn.tag = i;
         [btn addTarget:self action:@selector(handleRouteTapped:) forControlEvents:UIControlEventTouchUpInside];
 
-        // Configura etichette interne
         int mins = (int)ceil(r.totalDuration / 60.0);
         NSString *timeStr = [NSString stringWithFormat:@"%d min", mins];
         NSString *distStr = (r.totalDistance > 1000) ? [NSString stringWithFormat:@"%.1f km", r.totalDistance / 1000.0]
                                                      : [NSString stringWithFormat:@"%d m", (int)r.totalDistance];
 
         NSString *badge = r.badgeTitle ?: @"Itinerario";
-        NSString *delta = r.deltaDescription ?: @"";
         NSString *roads = r.routeSummary ?: @"";
 
-        NSString *title = [NSString stringWithFormat:@"%@\n%@ • %@\n%@ • %@", badge, timeStr, distStr, delta, roads];
+        if (r.totalTripCost <= 0.01) {
+            [r updateTripCosts];
+        }
+
+        NSString *costStr = (r.tollCost > 0.05)
+            ? [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ %.2f€", r.fuelCost, r.tollCost]
+            : [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ 0€", r.fuelCost];
+
+        NSString *title = [NSString stringWithFormat:@"%@\n%@ • %@\n%@\n%@", badge, timeStr, distStr, costStr, roads];
         [btn setTitle:title forState:UIControlStateNormal];
         btn.titleLabel.numberOfLines = 4;
         btn.titleLabel.textAlignment = NSTextAlignmentCenter;
-        btn.titleLabel.font = [UIFont systemFontOfSize:12.0];
+        btn.titleLabel.font = [UIFont systemFontOfSize:11.5];
 
         [self.buttonsContainer addSubview:btn];
         [self.routeButtons addObject:btn];
     }
 
     [self updateButtonHighlights];
+    [self updateCostSummary];
 }
 
 - (void)updateButtonHighlights {
@@ -160,6 +335,7 @@
 - (void)handleRouteTapped:(UIButton *)sender {
     self.selectedIndex = sender.tag;
     [self updateButtonHighlights];
+    [self updateCostSummary];
 
     if ([self.delegate respondsToSelector:@selector(routeSelectorView:didSelectRouteIndex:)]) {
         [self.delegate routeSelectorView:self didSelectRouteIndex:self.selectedIndex];
