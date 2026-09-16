@@ -105,33 +105,33 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           name: Release ${{ steps.get_version.outputs.TAG }}
           body: |
-            ## 🗺️ NavigatoreOSM - Release ${{ steps.get_version.outputs.TAG }}
+            ## 🗺️ NavigatorOSM - Release ${{ steps.get_version.outputs.TAG }}
             
-            Retrofit per iPad Mini 1ª Generazione (A1432, iOS 9.3.5, 32-bit armv7) + Companion App Android per GPS Tethering.
+            Pure native GPS navigation engine retrofitted for legacy Apple iPads (iPad Mini 1st Gen, iPad 2, iPad 3, iPad 4) running iOS 9.3.5 (32-bit armv7) + Android GPS Tethering Companion.
 
             ---
 
-            ### 📲 Come Aggiornare via OTA Senza Cavo (Cydia)
-            1. Apri **Cydia** sull'iPad Mini.
-            2. Vai su **Sorgenti** ➔ **Modifica** ➔ **Aggiungi**.
-            3. Inserisci l'URL del repository:
+            ### 📲 Wireless Over-The-Air Installation (Cydia)
+            1. Open **Cydia** on your jailbroken iPad Mini.
+            2. Navigate to **Sources** ➔ **Edit** ➔ **Add**.
+            3. Enter the official repository URL:
                `https://vibe-maribit.github.io/NavigatorOSM/`
-            4. Cydia troverà automaticamente l'applicazione **NavigatoreOSM** pronta per l'installazione o l'aggiornamento con un solo tap via Wi-Fi!
+            4. Cydia will index **NavigatorOSM** with full icon support, ready for 1-tap installation and wireless updates!
 
             ---
 
-            ### 📦 File Allegati a questa Release:
-            - `NavigatoreOSM.ipa`: Pacchetto per installazione diretta via USB con `ideviceinstaller` o Sideload.
-            - `com.nicola.NavigatoreOSM_*.deb`: Pacchetto Debian nativo per Cydia o Filza File Manager.
-            - `GPSTether.apk`: App companion per smartphone Android (condivisione GPS via Hotspot Wi-Fi).
+            ### 📦 Included Release Binaries
+            - `NavigatoreOSM.ipa`: Standalone iOS app bundle for 1-command USB installation via `./install-usb.sh`, `ideviceinstaller`, or Sideloadly.
+            - `com.nicola.navigatoreosm_*.deb`: Native Debian Cydia package for offline installation via Filza or DPKG.
+            - `GPSTether.apk`: Android companion app to broadcast satellite GPS coordinates over Wi-Fi hotspot to Wi-Fi-only iPads.
 
             ---
 
-            ### 🛰️ Guida Rapida GPS Hotspot Android:
-            1. Installa `GPSTether.apk` sul tuo smartphone Android.
-            2. Attiva l'**Hotspot Personale Wi-Fi** dello smartphone e connetti l'iPad.
-            3. Apri l'app **GPS Tether** sullo smartphone e tocca **▶ AVVIA TRASMISSIONE**.
-            4. Apri **Navigatore** sull'iPad: il segnale GPS diventerà attivo e preciso in tempo reale!
+            ### 🛰️ Android GPS Tethering Quick Setup
+            1. Install `GPSTether.apk` on your Android smartphone.
+            2. Enable your phone's **Wi-Fi Hotspot** and connect the iPad to it.
+            3. Open **GPS Tether** on Android and tap **▶ START TETHERING**.
+            4. Launch **NavigatorOSM** on the iPad: the speedometer and map will immediately lock onto your smartphone's high-accuracy GPS fix!
           files: |
             NavigatoreOSM.ipa
             packages/*.deb
