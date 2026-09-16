@@ -5,9 +5,24 @@
 @interface QuickPOIShelfView ()
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+@property (nonatomic, strong) NSMutableArray<UIButton *> *categoryButtons;
 @end
 
+static NSArray *POICategoriesDefinition(void) {
+    return @[
+        @{@"icon": @"⛽", @"key": @"FUEL",        @"def": @"Benzina",    @"query": @"fuel",       @"type": @"amenity"},
+        @{@"icon": @"🍕", @"key": @"RESTAURANTS", @"def": @"Ristoranti", @"query": @"restaurant", @"type": @"amenity"},
+        @{@"icon": @"🅿️", @"key": @"PARKING",     @"def": @"Parcheggi",  @"query": @"parking",    @"type": @"amenity"},
+        @{@"icon": @"☕", @"key": @"CAFE",        @"def": @"Bar",        @"query": @"cafe",       @"type": @"amenity"},
+        @{@"icon": @"💊", @"key": @"PHARMACY",    @"def": @"Farmacie",   @"query": @"pharmacy",   @"type": @"amenity"}
+    ];
+}
+
 @implementation QuickPOIShelfView
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -21,10 +36,12 @@
         self.layer.shadowRadius = 8.0;
         self.layer.shadowOffset = CGSizeMake(0, 3);
 
+        _categoryButtons = [NSMutableArray array];
+
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 10.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.1 (iPad Mini 1; iOS 9.3.5)"
+            @"User-Agent": @"NavigatoreOSM/1.3 (iPad Mini 1; iOS 9.3.5)"
         };
         _session = [NSURLSession sessionWithConfiguration:config];
 
@@ -34,19 +51,18 @@
         _spinner.center = CGPointMake(frame.size.width / 2.0, frame.size.height / 2.0);
         _spinner.hidesWhenStopped = YES;
         [self addSubview:_spinner];
+
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(updateLocalizedTitles)
+                                                     name:kAppLanguagePreferenceChangedNotification
+                                                   object:nil];
     }
     return self;
 }
 
 - (void)setupButtons {
-    // Query con tag Nominatim corretti (amenity=) invece di q= generico
-    NSArray *items = @[
-        @{@"icon": @"⛽", @"title": NLString(@"FUEL", @"Benzina"),         @"query": @"fuel",       @"type": @"amenity"},
-        @{@"icon": @"🍕", @"title": NLString(@"RESTAURANTS", @"Ristoranti"), @"query": @"restaurant", @"type": @"amenity"},
-        @{@"icon": @"🅿️", @"title": NLString(@"PARKING", @"Parcheggi"),     @"query": @"parking",    @"type": @"amenity"},
-        @{@"icon": @"☕", @"title": NLString(@"CAFE", @"Bar"),             @"query": @"cafe",       @"type": @"amenity"},
-        @{@"icon": @"💊", @"title": NLString(@"PHARMACY", @"Farmacie"),     @"query": @"pharmacy",   @"type": @"amenity"}
-    ];
+    NSArray *items = POICategoriesDefinition();
+    [self.categoryButtons removeAllObjects];
 
     CGFloat totalW = self.bounds.size.width - 50;
     CGFloat btnW = totalW / (CGFloat)items.count;
@@ -61,7 +77,8 @@
         btn.layer.borderColor = [[UIColor colorWithWhite:0.4 alpha:0.4] CGColor];
         btn.layer.borderWidth = 1.0;
 
-        NSString *text = [NSString stringWithFormat:@"%@ %@", dict[@"icon"], dict[@"title"]];
+        NSString *title = NLString(dict[@"key"], dict[@"def"]);
+        NSString *text = [NSString stringWithFormat:@"%@ %@", dict[@"icon"], title];
         [btn setTitle:text forState:UIControlStateNormal];
         btn.titleLabel.font = [UIFont boldSystemFontOfSize:11.0];
         [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
@@ -70,10 +87,13 @@
 
         objc_setAssociatedObject(btn, "poi_query", dict[@"query"], OBJC_ASSOCIATION_COPY_NONATOMIC);
         objc_setAssociatedObject(btn, "poi_type", dict[@"type"], OBJC_ASSOCIATION_COPY_NONATOMIC);
-        objc_setAssociatedObject(btn, "poi_name", dict[@"title"], OBJC_ASSOCIATION_COPY_NONATOMIC);
+        objc_setAssociatedObject(btn, "poi_key", dict[@"key"], OBJC_ASSOCIATION_COPY_NONATOMIC);
+        objc_setAssociatedObject(btn, "poi_def", dict[@"def"], OBJC_ASSOCIATION_COPY_NONATOMIC);
+        objc_setAssociatedObject(btn, "poi_name", title, OBJC_ASSOCIATION_COPY_NONATOMIC);
 
         [btn addTarget:self action:@selector(handlePOITapped:) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:btn];
+        [self.categoryButtons addObject:btn];
     }
 
     // Bottone chiudi a destra
@@ -88,6 +108,18 @@
     [self addSubview:closeBtn];
 }
 
+- (void)updateLocalizedTitles {
+    NSArray *items = POICategoriesDefinition();
+    for (NSUInteger i = 0; i < self.categoryButtons.count && i < items.count; i++) {
+        UIButton *btn = self.categoryButtons[i];
+        NSDictionary *dict = items[i];
+        NSString *title = NLString(dict[@"key"], dict[@"def"]);
+        NSString *text = [NSString stringWithFormat:@"%@ %@", dict[@"icon"], title];
+        [btn setTitle:text forState:UIControlStateNormal];
+        objc_setAssociatedObject(btn, "poi_name", title, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+}
+
 - (void)handleClose {
     if ([self.delegate respondsToSelector:@selector(quickPOIShelfViewDidRequestClose:)]) {
         [self.delegate quickPOIShelfViewDidRequestClose:self];
@@ -96,7 +128,9 @@
 
 - (void)handlePOITapped:(UIButton *)sender {
     NSString *query = objc_getAssociatedObject(sender, "poi_query");
-    NSString *name = objc_getAssociatedObject(sender, "poi_name");
+    NSString *key = objc_getAssociatedObject(sender, "poi_key");
+    NSString *def = objc_getAssociatedObject(sender, "poi_def");
+    NSString *name = (key && def) ? NLString(key, def) : objc_getAssociatedObject(sender, "poi_name");
 
     if ([self.delegate respondsToSelector:@selector(quickPOIShelfView:didRequestSearchCategory:categoryName:)]) {
         [self.delegate quickPOIShelfView:self didRequestSearchCategory:query categoryName:name];

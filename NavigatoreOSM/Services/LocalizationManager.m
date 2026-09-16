@@ -120,7 +120,15 @@ static NSString *const kLanguagePreferenceKey = @"AppLanguagePreference";
             @"VOICE_1000M": @"Tra circa un chilometro, %@",
             @"VOICE_500M": @"Tra 500 metri, %@",
             @"VOICE_200M": @"Tra 200 metri, %@",
-            @"VOICE_NOW": @"Ora, %@"
+            @"VOICE_NOW": @"Ora, %@",
+            @"ROUTE_SUMMARY": @"📋 Riepilogo Itinerario",
+            @"FIND_MORE_ROUTES": @"🔄 Ricalcola / Altri itinerari",
+            @"MORE_ROUTES": @"🔄 Altri",
+            @"REPEAT_VOICE": @"🔊 Ripeti voce",
+            @"STEP_HEADER": @"Passaggio %lu di %lu",
+            @"TOTAL_REMAINING": @"Rimanente: %@ • %@",
+            @"POI_FOUND_VOICE": @"Trovati %lu %@ nelle vicinanze.",
+            @"NO_STEPS": @"Nessun passaggio disponibile."
         },
 
         @"en": @{
@@ -213,7 +221,15 @@ static NSString *const kLanguagePreferenceKey = @"AppLanguagePreference";
             @"VOICE_1000M": @"In about one kilometer, %@",
             @"VOICE_500M": @"In 500 meters, %@",
             @"VOICE_200M": @"In 200 meters, %@",
-            @"VOICE_NOW": @"Now, %@"
+            @"VOICE_NOW": @"Now, %@",
+            @"ROUTE_SUMMARY": @"📋 Route Summary",
+            @"FIND_MORE_ROUTES": @"🔄 Recalculate / Other routes",
+            @"MORE_ROUTES": @"🔄 Alternatives",
+            @"REPEAT_VOICE": @"🔊 Repeat instruction",
+            @"STEP_HEADER": @"Step %lu of %lu",
+            @"TOTAL_REMAINING": @"Remaining: %@ • %@",
+            @"POI_FOUND_VOICE": @"Found %lu %@ nearby.",
+            @"NO_STEPS": @"No steps available."
         }
     };
 }

@@ -15,5 +15,6 @@
 @property (nonatomic, weak) id<QuickPOIShelfViewDelegate> delegate;
 
 - (void)searchCategory:(NSString *)query fromCoordinate:(CLLocationCoordinate2D)coord categoryName:(NSString *)categoryName;
+- (void)updateLocalizedTitles;
 
 @end

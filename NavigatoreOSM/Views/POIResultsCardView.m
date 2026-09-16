@@ -7,9 +7,14 @@
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) NSArray<MKPointAnnotation *> *annotations;
+@property (nonatomic, copy) NSString *categoryName;
 @end
 
 @implementation POIResultsCardView
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -46,14 +51,27 @@
         self.scrollView.showsHorizontalScrollIndicator = NO;
         self.scrollView.alwaysBounceHorizontal = YES;
         [self addSubview:self.scrollView];
+
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleLanguageChanged)
+                                                     name:kAppLanguagePreferenceChangedNotification
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)handleLanguageChanged {
+    if (self.categoryName && self.annotations) {
+        NSString *fmt = NLString(@"POI_NEARBY", @"%@ %lu nelle vicinanze");
+        self.titleLabel.text = [NSString stringWithFormat:fmt, self.categoryName, (unsigned long)self.annotations.count];
+    }
 }
 
 - (void)showWithAnnotations:(NSArray<MKPointAnnotation *> *)annotations
                categoryName:(NSString *)categoryName
             currentLocation:(CLLocation *)currentLocation {
     self.annotations = annotations;
+    self.categoryName = categoryName;
     NSString *fmt = NLString(@"POI_NEARBY", @"%@ %lu nelle vicinanze");
     self.titleLabel.text = [NSString stringWithFormat:fmt, categoryName, (unsigned long)annotations.count];
 

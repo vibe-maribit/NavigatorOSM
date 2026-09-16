@@ -6,11 +6,16 @@
 @property (nonatomic, assign) NSUInteger selectedIndex;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *routeButtons;
 @property (nonatomic, strong) UIButton *startButton;
+@property (nonatomic, strong) UIButton *recalcButton;
 @property (nonatomic, strong) UIButton *cancelButton;
 @property (nonatomic, strong) UIView *buttonsContainer;
 @end
 
 @implementation RouteSelectorView
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -31,34 +36,61 @@
         _buttonsContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self addSubview:_buttonsContainer];
 
+        CGFloat totalW = frame.size.width - 32.0;
+        CGFloat spacing = 10.0;
+        CGFloat usableW = totalW - spacing * 2.0;
+        CGFloat startW = round(usableW * 0.50);
+        CGFloat recalcW = round(usableW * 0.30);
+        CGFloat cancelW = usableW - startW - recalcW;
+
         // Pulsante verde "Avvia Navigazione"
-        CGFloat btnW = (frame.size.width - 44) * 0.72;
         _startButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        _startButton.frame = CGRectMake(16, frame.size.height - 58, btnW, 46);
+        _startButton.frame = CGRectMake(16, frame.size.height - 58, startW, 46);
         _startButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
         _startButton.backgroundColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
         _startButton.layer.cornerRadius = 12.0;
         [_startButton setTitle:NLString(@"START_NAVIGATION", @"▶ Avvia Navigazione") forState:UIControlStateNormal];
         [_startButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        _startButton.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+        _startButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
         [_startButton addTarget:self action:@selector(handleStart) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_startButton];
 
-        // Pulsante Annulla
-        CGFloat cancelX = 16 + btnW + 12;
-        CGFloat cancelW = frame.size.width - cancelX - 16;
+        // Pulsante blu "🔄 Altri" (Cerca itinerari alternativi)
+        _recalcButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        _recalcButton.frame = CGRectMake(16 + startW + spacing, frame.size.height - 58, recalcW, 46);
+        _recalcButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
+        _recalcButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.48 blue:0.95 alpha:0.95];
+        _recalcButton.layer.cornerRadius = 12.0;
+        [_recalcButton setTitle:NLString(@"MORE_ROUTES", @"🔄 Altri") forState:UIControlStateNormal];
+        [_recalcButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        _recalcButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
+        [_recalcButton addTarget:self action:@selector(handleRecalculate) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:_recalcButton];
+
+        // Pulsante grigio "Annulla"
         _cancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        _cancelButton.frame = CGRectMake(cancelX, frame.size.height - 58, cancelW, 46);
+        _cancelButton.frame = CGRectMake(16 + startW + spacing + recalcW + spacing, frame.size.height - 58, cancelW, 46);
         _cancelButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
         _cancelButton.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.9];
         _cancelButton.layer.cornerRadius = 12.0;
         [_cancelButton setTitle:NLString(@"CANCEL", @"Annulla") forState:UIControlStateNormal];
         [_cancelButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        _cancelButton.titleLabel.font = [UIFont systemFontOfSize:15.0];
+        _cancelButton.titleLabel.font = [UIFont systemFontOfSize:14.0];
         [_cancelButton addTarget:self action:@selector(handleCancel) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_cancelButton];
+
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleLanguageChanged)
+                                                     name:kAppLanguagePreferenceChangedNotification
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)handleLanguageChanged {
+    [self.startButton setTitle:NLString(@"START_NAVIGATION", @"▶ Avvia Navigazione") forState:UIControlStateNormal];
+    [self.recalcButton setTitle:NLString(@"MORE_ROUTES", @"🔄 Altri") forState:UIControlStateNormal];
+    [self.cancelButton setTitle:NLString(@"CANCEL", @"Annulla") forState:UIControlStateNormal];
 }
 
 - (void)setRoutes:(NSArray<RouteInfo *> *)routes {
@@ -140,6 +172,12 @@
         if ([self.delegate respondsToSelector:@selector(routeSelectorView:didConfirmStartRoute:)]) {
             [self.delegate routeSelectorView:self didConfirmStartRoute:chosen];
         }
+    }
+}
+
+- (void)handleRecalculate {
+    if ([self.delegate respondsToSelector:@selector(routeSelectorViewDidRequestRecalculate:)]) {
+        [self.delegate routeSelectorViewDidRequestRecalculate:self];
     }
 }
 

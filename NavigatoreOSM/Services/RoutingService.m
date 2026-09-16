@@ -308,9 +308,10 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                                  start:(CLLocationCoordinate2D)start
                            destination:(CLLocationCoordinate2D)destination
                                  title:(NSString *)title
+                           offsetRatio:(double)offsetRatio
                             completion:(void (^)(NSArray<RouteInfo *> *finalRoutes))done {
-    // Se abbiamo già 3 o più itinerari distinti, completiamo subito
-    if (routes.count >= 3) {
+    // Se abbiamo già 4 o più itinerari distinti, completiamo subito
+    if (routes.count >= 4) {
         done(routes);
         return;
     }
@@ -319,8 +320,8 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
     double dLon = destination.longitude - start.longitude;
     double len = sqrt(dLat * dLat + dLon * dLon);
 
-    // Se la distanza lineare è minore di circa 15 km, non ha senso cercare corridoi autostradali alternativi
-    if (len < 0.15) {
+    // Se la distanza lineare è minore di circa 10 km, non ha senso cercare corridoi autostradali alternativi
+    if (len < 0.10) {
         done(routes);
         return;
     }
@@ -332,8 +333,9 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
     double pLat = dLon / len;
     double pLon = -dLat / len;
 
-    // Due corridoi laterali simmetrici (22% della distanza totale)
-    double offset = len * 0.22;
+    // Corridoi laterali modulati dal parametro offsetRatio (default 22%)
+    double ratio = (fabs(offsetRatio) > 0.05) ? offsetRatio : 0.22;
+    double offset = len * ratio;
     CLLocationCoordinate2D via1 = CLLocationCoordinate2DMake(midLat + pLat * offset, midLon + pLon * offset);
     CLLocationCoordinate2D via2 = CLLocationCoordinate2DMake(midLat - pLat * offset, midLon - pLon * offset);
 
@@ -389,6 +391,14 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                          to:(CLLocationCoordinate2D)destination
             destinationTitle:(NSString *)title
                   completion:(RoutesCompletionBlock)completion {
+    [self calculateRoutesFrom:start to:destination destinationTitle:title corridorOffset:0.22 completion:completion];
+}
+
+- (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
+                         to:(CLLocationCoordinate2D)destination
+            destinationTitle:(NSString *)title
+             corridorOffset:(double)offsetRatio
+                  completion:(RoutesCompletionBlock)completion {
 
     NSString *coordsParam = [NSString stringWithFormat:@"%.6f,%.6f;%.6f,%.6f",
                              start.longitude, start.latitude,
@@ -402,8 +412,8 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                                @"http://routing.openstreetmap.de/routed-car/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=true&annotations=true",
                                coordsParam];
 
-    NSLog(@"[RoutingService] Richiesta itinerari da (%.4f, %.4f) a (%.4f, %.4f)",
-          start.latitude, start.longitude, destination.latitude, destination.longitude);
+    NSLog(@"[RoutingService] Richiesta itinerari da (%.4f, %.4f) a (%.4f, %.4f) con offset %.2f",
+          start.latitude, start.longitude, destination.latitude, destination.longitude, offsetRatio);
 
     __weak RoutingService *weakSelf = self;
     NSURL *primaryUrl = [NSURL URLWithString:primaryUrlStr];
@@ -413,7 +423,7 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
             NSArray<RouteInfo *> *parsed = [weakSelf parseRoutesData:data destination:destination title:title error:&parseErr];
             if (parsed.count > 0) {
                 NSMutableArray<RouteInfo *> *routesMut = [parsed mutableCopy];
-                [weakSelf enrichWithAlternativeCorridors:routesMut start:start destination:destination title:title completion:^(NSArray<RouteInfo *> *finalRoutes) {
+                [weakSelf enrichWithAlternativeCorridors:routesMut start:start destination:destination title:title offsetRatio:offsetRatio completion:^(NSArray<RouteInfo *> *finalRoutes) {
                     NSLog(@"[RoutingService] Itinerari finali calcolati: %lu percorsi", (unsigned long)finalRoutes.count);
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (completion) completion(finalRoutes, nil);
@@ -434,7 +444,7 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                 NSArray<RouteInfo *> *parsed2 = [weakSelf parseRoutesData:data2 destination:destination title:title error:&parseErr2];
                 if (parsed2.count > 0) {
                     NSMutableArray<RouteInfo *> *routesMut2 = [parsed2 mutableCopy];
-                    [weakSelf enrichWithAlternativeCorridors:routesMut2 start:start destination:destination title:title completion:^(NSArray<RouteInfo *> *finalRoutes2) {
+                    [weakSelf enrichWithAlternativeCorridors:routesMut2 start:start destination:destination title:title offsetRatio:offsetRatio completion:^(NSArray<RouteInfo *> *finalRoutes2) {
                         NSLog(@"[RoutingService] Itinerari finali secondario: %lu percorsi", (unsigned long)finalRoutes2.count);
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if (completion) completion(finalRoutes2, nil);

@@ -44,6 +44,13 @@ typedef void (^RoutesCompletionBlock)(NSArray<RouteInfo *> *routes, NSError *err
             destinationTitle:(NSString *)title
                  completion:(RoutesCompletionBlock)completion;
 
+/// Calcola itinerari alternativi permettendo di variare la spaziatura del corridoio
+- (void)calculateRoutesFrom:(CLLocationCoordinate2D)start
+                         to:(CLLocationCoordinate2D)destination
+            destinationTitle:(NSString *)title
+             corridorOffset:(double)offsetRatio
+                 completion:(RoutesCompletionBlock)completion;
+
 /// Compatibilità: calcola il percorso principale più veloce
 - (void)calculateRouteFrom:(CLLocationCoordinate2D)start
                         to:(CLLocationCoordinate2D)destination

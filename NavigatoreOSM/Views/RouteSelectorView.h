@@ -7,6 +7,8 @@
 - (void)routeSelectorView:(RouteSelectorView *)view didSelectRouteIndex:(NSUInteger)index;
 - (void)routeSelectorView:(RouteSelectorView *)view didConfirmStartRoute:(RouteInfo *)selectedRoute;
 - (void)routeSelectorViewDidCancel:(RouteSelectorView *)view;
+@optional
+- (void)routeSelectorViewDidRequestRecalculate:(RouteSelectorView *)view;
 @end
 
 @interface RouteSelectorView : UIView

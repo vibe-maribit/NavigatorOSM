@@ -44,27 +44,52 @@ static NSString *URLTemplateForTheme(OSMMapTheme theme) {
         config.timeoutIntervalForRequest = 10.0;
         _session = [NSURLSession sessionWithConfiguration:config];
 
-        // Prepara la cartella cache su disco ed elimina eventuali vecchie tile Carto con watermark
+        // Prepara la cartella cache su disco ed elimina eventuali vecchie tile Carto con watermark o cache scura corrotta
         NSString *baseCache = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
         _cacheDirectory = [baseCache stringByAppendingPathComponent:@"OSMTiles"];
         [[NSFileManager defaultManager] createDirectoryAtPath:_cacheDirectory withIntermediateDirectories:YES attributes:nil error:nil];
 
-        // Pulizia una tantum della vecchia cartella dark/voyager di Carto
+        // Pulizia una tantum della vecchia cartella dark/voyager di Carto e di vecchie tile dark non conformi
         NSString *oldDark = [_cacheDirectory stringByAppendingPathComponent:@"dark"];
         NSString *oldVoyager = [_cacheDirectory stringByAppendingPathComponent:@"voyager"];
-        if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DidClearOldCartoWatermarkCache_v12"]) {
+        NSString *esriDark = [_cacheDirectory stringByAppendingPathComponent:@"dark_esri"];
+        if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DidClearOldEsriDarkCache_v13"]) {
             [[NSFileManager defaultManager] removeItemAtPath:oldDark error:nil];
             [[NSFileManager defaultManager] removeItemAtPath:oldVoyager error:nil];
-            [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"DidClearOldCartoWatermarkCache_v12"];
+            [[NSFileManager defaultManager] removeItemAtPath:esriDark error:nil];
+            [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"DidClearOldEsriDarkCache_v13"];
             [[NSUserDefaults standardUserDefaults] synchronize];
         }
     }
     return self;
 }
 
+- (NSURL *)URLForTilePath:(MKTileOverlayPath)path {
+    switch (self.theme) {
+        case OSMMapThemeDark: {
+            // Esri World Dark Gray Base: /tile/{z}/{y}/{x}
+            NSString *urlStr = [NSString stringWithFormat:@"https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/%ld/%ld/%ld",
+                                (long)path.z, (long)path.y, (long)path.x];
+            return [NSURL URLWithString:urlStr];
+        }
+        case OSMMapThemeSatellite: {
+            // Esri World Imagery: /tile/{z}/{y}/{x}
+            NSString *urlStr = [NSString stringWithFormat:@"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/%ld/%ld/%ld",
+                                (long)path.z, (long)path.y, (long)path.x];
+            return [NSURL URLWithString:urlStr];
+        }
+        case OSMMapThemeStandard:
+        default: {
+            // OpenStreetMap Standard: /{z}/{x}/{y}.png
+            NSString *urlStr = [NSString stringWithFormat:@"https://tile.openstreetmap.org/%ld/%ld/%ld.png",
+                                (long)path.z, (long)path.x, (long)path.y];
+            return [NSURL URLWithString:urlStr];
+        }
+    }
+}
+
 - (void)switchTheme:(OSMMapTheme)newTheme {
     _theme = newTheme;
-    // Aggiorna template
     NSString *template = URLTemplateForTheme(newTheme);
     [self setValue:template forKey:@"URLTemplate"];
 }

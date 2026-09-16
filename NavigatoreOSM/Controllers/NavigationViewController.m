@@ -1,6 +1,7 @@
 #import "NavigationViewController.h"
 #import "SearchViewController.h"
 #import "SettingsViewController.h"
+#import "RouteSummaryViewController.h"
 #import "../Overlays/OSMTileOverlay.h"
 #import "../Overlays/TrafficTileOverlay.h"
 #import "../Services/RoutingService.h"
@@ -14,7 +15,7 @@
 #import "../Views/POIResultsCardView.h"
 #import "../Services/LocalizationManager.h"
 
-@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate>
+@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate, RouteSummaryViewControllerDelegate>
 
 @property (nonatomic, strong) OSMTileOverlay *osmOverlay;
 @property (nonatomic, strong) TrafficTileOverlay *trafficOverlay;
@@ -81,9 +82,9 @@
     self.is3DMode = YES;
     self.toolbarExpanded = NO;
 
-    // 3. Sovrapponi layer OpenStreetMap base a livello strade
-    self.osmOverlay = [[OSMTileOverlay alloc] initWithTheme:OSMMapThemeStandard];
-    [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
+    // 3. Sovrapponi layer mappa secondo le preferenze salvate
+    NSInteger savedTheme = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
+    [self applyMapTheme:(OSMMapTheme)savedTheme savePreference:NO];
 
     // 4. Layer Traffico in tempo reale
     self.trafficOverlay = [TrafficTileOverlay sharedOverlay];
@@ -164,7 +165,7 @@
     self.maneuverHUD = [[ManeuverHUDView alloc] initWithFrame:CGRectMake(24, 20, 380, 108)];
     self.maneuverHUD.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
     self.maneuverHUD.onTapBlock = ^{
-        [weakSelf repeatCurrentInstruction];
+        [weakSelf showRouteSummary];
     };
     self.maneuverHUD.hidden = YES;
     [self.view addSubview:self.maneuverHUD];
@@ -213,6 +214,7 @@
     if (self.currentLocation == nil) {
         self.gpsSourceLabel.text = NLString(@"WAITING_GPS", @"GPS: In attesa di segnale...");
     }
+    [self.poiShelf updateLocalizedTitles];
     [self.maneuverHUD reset];
 }
 
@@ -254,7 +256,14 @@
     self.trafficButton.alpha = 0;
     [self.view addSubview:self.trafficButton];
 
-    self.themeButton = [self createCircularButtonWithTitle:@"🌙" frame:CGRectMake(btnX, baseY - spacing * 4, btnSize, btnSize)];
+    NSString *initialThemeIcon = @"☀️";
+    NSInteger initialTheme = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
+    if (initialTheme == OSMMapThemeDark) {
+        initialThemeIcon = @"🌙";
+    } else if (initialTheme == OSMMapThemeSatellite) {
+        initialThemeIcon = @"🛰️";
+    }
+    self.themeButton = [self createCircularButtonWithTitle:initialThemeIcon frame:CGRectMake(btnX, baseY - spacing * 4, btnSize, btnSize)];
     [self.themeButton addTarget:self action:@selector(toggleMapTheme) forControlEvents:UIControlEventTouchUpInside];
     self.themeButton.hidden = YES;
     self.themeButton.alpha = 0;
@@ -406,37 +415,66 @@
     }
 }
 
-- (void)toggleMapTheme {
-    OSMMapTheme current = self.osmOverlay.theme;
-    OSMMapTheme next;
-    if (self.mapView.mapType == MKMapTypeHybrid) {
-        next = OSMMapThemeStandard;
-    } else if (current == OSMMapThemeStandard) {
-        next = OSMMapThemeDark;
-    } else if (current == OSMMapThemeDark) {
-        next = OSMMapThemeSatellite;
-    } else {
-        next = OSMMapThemeStandard;
+- (void)applyMapTheme:(OSMMapTheme)theme savePreference:(BOOL)save {
+    if (save) {
+        [[NSUserDefaults standardUserDefaults] setInteger:(NSInteger)theme forKey:@"MapThemeIndex"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
     }
 
-    if (next == OSMMapThemeSatellite) {
+    if (self.osmOverlay) {
         [self.mapView removeOverlay:self.osmOverlay];
+        self.osmOverlay = nil;
+    }
+
+    if (theme == OSMMapThemeSatellite) {
         self.mapView.mapType = MKMapTypeHybrid;
-        [self.themeButton setTitle:@"☀️" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:NLString(@"SAT_MODE", @"Modalità satellite attivata.")];
-    } else if (next == OSMMapThemeDark) {
-        self.mapView.mapType = MKMapTypeStandard;
-        [self.osmOverlay switchTheme:OSMMapThemeDark];
-        [self.mapView removeOverlay:self.osmOverlay];
-        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
         [self.themeButton setTitle:@"🛰️" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:NLString(@"NIGHT_MODE", @"Modalità notturna attivata.")];
+    } else if (theme == OSMMapThemeDark) {
+        self.mapView.mapType = MKMapTypeStandard;
+        self.osmOverlay = [[OSMTileOverlay alloc] initWithTheme:OSMMapThemeDark];
+        [self.mapView insertOverlay:self.osmOverlay atIndex:0 level:MKOverlayLevelAboveRoads];
+        [self.themeButton setTitle:@"🌙" forState:UIControlStateNormal];
     } else {
         self.mapView.mapType = MKMapTypeStandard;
-        [self.osmOverlay switchTheme:OSMMapThemeStandard];
-        [self.mapView removeOverlay:self.osmOverlay];
-        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
-        [self.themeButton setTitle:@"🌙" forState:UIControlStateNormal];
+        self.osmOverlay = [[OSMTileOverlay alloc] initWithTheme:OSMMapThemeStandard];
+        [self.mapView insertOverlay:self.osmOverlay atIndex:0 level:MKOverlayLevelAboveRoads];
+        [self.themeButton setTitle:@"☀️" forState:UIControlStateNormal];
+    }
+
+    if (self.trafficOverlay && self.trafficOverlay.isEnabled) {
+        [self.mapView removeOverlay:self.trafficOverlay];
+        [self.mapView addOverlay:self.trafficOverlay level:MKOverlayLevelAboveRoads];
+    }
+
+    if (self.availableRoutes.count > 0) {
+        for (RouteInfo *r in self.availableRoutes) {
+            if (r.polyline) {
+                [self.mapView removeOverlay:r.polyline];
+                [self.mapView addOverlay:r.polyline level:MKOverlayLevelAboveLabels];
+            }
+        }
+    } else if (self.currentRoute && self.currentRoute.polyline) {
+        [self.mapView removeOverlay:self.currentRoute.polyline];
+        [self.mapView addOverlay:self.currentRoute.polyline level:MKOverlayLevelAboveLabels];
+    }
+}
+
+- (void)toggleMapTheme {
+    OSMMapTheme current = OSMMapThemeStandard;
+    if (self.mapView.mapType == MKMapTypeHybrid) {
+        current = OSMMapThemeSatellite;
+    } else if (self.osmOverlay) {
+        current = self.osmOverlay.theme;
+    }
+
+    OSMMapTheme next = (current + 1) % 3;
+    [self applyMapTheme:next savePreference:YES];
+
+    if (next == OSMMapThemeSatellite) {
+        [[VoiceGuidanceService sharedService] speak:NLString(@"SAT_MODE", @"Modalità satellite attivata.")];
+    } else if (next == OSMMapThemeDark) {
+        [[VoiceGuidanceService sharedService] speak:NLString(@"NIGHT_MODE", @"Modalità notturna attivata.")];
+    } else {
         [[VoiceGuidanceService sharedService] speak:NLString(@"DAY_MODE", @"Mappa standard attivata.")];
     }
 }
@@ -746,6 +784,129 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     [self cancelCurrentRoute];
 }
 
+- (void)routeSelectorViewDidRequestRecalculate:(RouteSelectorView *)view {
+    [self recalculateAlternativeRoutes];
+}
+
+#pragma mark - Route Summary & Alternative Routes
+
+- (void)showRouteSummary {
+    if (!self.currentRoute) {
+        [self repeatCurrentInstruction];
+        return;
+    }
+
+    RouteSummaryViewController *summaryVC = [[RouteSummaryViewController alloc] init];
+    summaryVC.route = self.currentRoute;
+    summaryVC.currentStepIndex = self.currentStepIndex;
+    summaryVC.delegate = self;
+    [self presentViewController:summaryVC animated:YES completion:nil];
+}
+
+#pragma mark - RouteSummaryViewControllerDelegate
+
+- (void)routeSummaryViewControllerDidRequestRecalculate:(RouteSummaryViewController *)controller {
+    [controller dismissViewControllerAnimated:YES completion:^{
+        [self recalculateAlternativeRoutes];
+    }];
+}
+
+- (void)routeSummaryViewControllerDidRequestRepeatVoice:(RouteSummaryViewController *)controller {
+    [self repeatCurrentInstruction];
+}
+
+- (void)routeSummaryViewController:(RouteSummaryViewController *)controller didSelectStepIndex:(NSUInteger)stepIndex {
+    if (stepIndex < self.currentRoute.steps.count) {
+        ManeuverStep *step = self.currentRoute.steps[stepIndex];
+        [self.mapView setCenterCoordinate:step.coordinate animated:YES];
+    }
+}
+
+- (void)recalculateAlternativeRoutes {
+    CLLocationCoordinate2D startCoord;
+    if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
+        startCoord = self.currentLocation.coordinate;
+    } else if (self.mapView.userLocation.location && CLLocationCoordinate2DIsValid(self.mapView.userLocation.location.coordinate) && self.mapView.userLocation.location.coordinate.latitude != 0) {
+        startCoord = self.mapView.userLocation.location.coordinate;
+    } else {
+        startCoord = self.mapView.centerCoordinate;
+    }
+
+    CLLocationCoordinate2D destCoord = kCLLocationCoordinate2DInvalid;
+    NSString *destTitle = nil;
+    if (self.currentRoute) {
+        destCoord = self.currentRoute.destinationCoordinate;
+        destTitle = self.currentRoute.destinationTitle;
+    } else if (self.destinationPin) {
+        destCoord = self.destinationPin.coordinate;
+        destTitle = self.destinationPin.title;
+    }
+
+    if (!CLLocationCoordinate2DIsValid(destCoord) || destCoord.latitude == 0) {
+        return;
+    }
+
+    // Se eravamo in navigazione attiva, azzeriamo HUD e mostriamo il selettore
+    self.isNavigating = NO;
+    self.maneuverHUD.hidden = YES;
+    self.tripBar.hidden = YES;
+
+    static int sCorridorCycle = 0;
+    sCorridorCycle++;
+    double offsets[] = { 0.35, -0.30, 0.22, 0.45 };
+    double currentOffset = offsets[sCorridorCycle % 4];
+
+    [[VoiceGuidanceService sharedService] speak:NLString(@"SEARCHING_ROUTES", @"Ricerca itinerari alternativi...")];
+
+    self.currentRouteRequestId++;
+    NSUInteger thisRequestId = self.currentRouteRequestId;
+
+    __weak NavigationViewController *weakSelf = self;
+    [[RoutingService sharedService] calculateRoutesFrom:startCoord
+                                                     to:destCoord
+                                       destinationTitle:destTitle
+                                         corridorOffset:currentOffset
+                                             completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
+        if (!weakSelf || weakSelf.currentRouteRequestId != thisRequestId) return;
+
+        if (error || routes.count == 0) {
+            NSString *errPrompt = (error.code == -2)
+                ? NLString(@"NO_ROUTE_FOUND", @"Nessun percorso stradale trovato per questa destinazione.")
+                : NLString(@"CALC_ERROR", @"Errore nel calcolo del percorso.");
+            [[VoiceGuidanceService sharedService] speak:errPrompt];
+            return;
+        }
+
+        // Pulisci overlay precedenti
+        for (id<MKOverlay> overlay in [weakSelf.mapView.overlays copy]) {
+            if ([overlay isKindOfClass:[MKPolyline class]]) {
+                [weakSelf.mapView removeOverlay:overlay];
+            }
+        }
+
+        weakSelf.availableRoutes = routes;
+        weakSelf.currentRoute = routes[0];
+        weakSelf.currentStepIndex = 0;
+
+        for (RouteInfo *r in routes) {
+            if (r.polyline) {
+                [weakSelf.mapView addOverlay:r.polyline level:MKOverlayLevelAboveLabels];
+            }
+        }
+
+        [weakSelf.mapView setVisibleMapRect:routes[0].polyline.boundingMapRect
+                                edgePadding:UIEdgeInsetsMake(120, 60, 220, 60)
+                                   animated:YES];
+
+        [weakSelf.routeSelector setRoutes:routes];
+        weakSelf.routeSelector.hidden = NO;
+
+        NSString *foundVoiceFmt = NLString(@"FOUND_ROUTES_VOICE", @"Trovati %lu itinerari. Tocca quello desiderato per iniziare.");
+        NSString *voiceMsg = [NSString stringWithFormat:foundVoiceFmt, (unsigned long)routes.count];
+        [[VoiceGuidanceService sharedService] speak:voiceMsg];
+    }];
+}
+
 #pragma mark - QuickPOIShelfViewDelegate
 
 - (void)quickPOIShelfView:(QuickPOIShelfView *)shelf didRequestSearchCategory:(NSString *)query categoryName:(NSString *)categoryName {
@@ -770,7 +931,8 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
                                 categoryName:category
                              currentLocation:self.currentLocation];
 
-    NSString *msg = [NSString stringWithFormat:@"Trovati %lu %@ nelle vicinanze.", (unsigned long)annotations.count, category];
+    NSString *fmt = NLString(@"POI_FOUND_VOICE", @"Trovati %lu %@ nelle vicinanze.");
+    NSString *msg = [NSString stringWithFormat:fmt, (unsigned long)annotations.count, category];
     [[VoiceGuidanceService sharedService] speak:msg];
 }
 
@@ -968,26 +1130,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
 - (void)settingsViewControllerDidUpdateSettings:(SettingsViewController *)controller {
     NSInteger themeIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
-    if (themeIdx == 2) {
-        // Satellite
-        [self.mapView removeOverlay:self.osmOverlay];
-        self.mapView.mapType = MKMapTypeHybrid;
-        [self.themeButton setTitle:@"☀️" forState:UIControlStateNormal];
-    } else if (themeIdx == 1) {
-        // Notte (Esri Dark Canvas)
-        self.mapView.mapType = MKMapTypeStandard;
-        [self.osmOverlay switchTheme:OSMMapThemeDark];
-        [self.mapView removeOverlay:self.osmOverlay];
-        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
-        [self.themeButton setTitle:@"🛰️" forState:UIControlStateNormal];
-    } else {
-        // Giorno (OSM Standard)
-        self.mapView.mapType = MKMapTypeStandard;
-        [self.osmOverlay switchTheme:OSMMapThemeStandard];
-        [self.mapView removeOverlay:self.osmOverlay];
-        [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
-        [self.themeButton setTitle:@"🌙" forState:UIControlStateNormal];
-    }
+    [self applyMapTheme:(OSMMapTheme)themeIdx savePreference:NO];
 }
 
 #pragma mark - MKMapViewDelegate
