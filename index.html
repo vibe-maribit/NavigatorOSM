@@ -1,152 +1,802 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NavigatoreOSM - Cydia Repository</title>
+    <title>NavigatoreOSM - Turn Obsolete iPads into Dedicated In-Car GPS Navigators (iOS 9.3.5 Retrofit)</title>
+    
+    <!-- Primary SEO Meta Tags -->
+    <meta name="title" content="NavigatoreOSM - Turn Obsolete iPads into Dedicated In-Car GPS Navigators (iOS 9.3.5 Retrofit)">
+    <meta name="description" content="Give obsolete iPads a second life as dedicated, high-performance in-car GPS navigators. 100% pure native Objective-C, 60 FPS MapKit, offline OpenStreetMap tiles, OSRM turn-by-turn routing, live speed limits, and telemetry HUD for iOS 9.3.5 (iPad Mini 1, iPad 2/3/4).">
+    <meta name="keywords" content="reuse old ipad as car gps, repurpose obsolete ipad, ipad mini 1 car navigator, turn ipad into dashboard gps, legacy ipad carplay alternative, waze for ios 9, google maps ios 9 alternative, openstreetmap ios 9, cydia car navigator, kok3shi9 phoenix ios 9.3.5, e-waste tablet reuse, retrofit legacy ipad, offline mapkit ios 9, ipad mini 1 dashboard mount">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="author" content="Nicola / vibe-maribit">
+    <meta name="theme-color" content="#0d1117">
+    <link rel="canonical" href="https://vibe-maribit.github.io/NavigatorOSM/">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://vibe-maribit.github.io/NavigatorOSM/">
+    <meta property="og:title" content="NavigatoreOSM: Turn Old Obsolete iPads into In-Car GPS Navigators">
+    <meta property="og:description" content="Combat electronic waste by repurposing obsolete iPad Mini 1 and iPad 2/3/4 devices into dedicated, 60 FPS offline GPS navigation dashboards running iOS 9.3.5.">
+    <meta property="og:image" content="https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png">
+    <meta property="og:site_name" content="NavigatoreOSM">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://vibe-maribit.github.io/NavigatorOSM/">
+    <meta name="twitter:title" content="NavigatoreOSM - Turn Obsolete iPads into In-Car GPS Navigators">
+    <meta name="twitter:description" content="Give old iPads a second life! Pure native Objective-C GPS navigation for iOS 9.3.5 with 60 FPS MapKit, OSRM turn-by-turn routing, offline caching, and speedometer HUD.">
+    <meta name="twitter:image" content="https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png">
+
+    <!-- Apple Touch Icon & Favicon -->
+    <link rel="apple-touch-icon" href="CydiaIcon.png">
+    <link rel="icon" type="image/png" href="CydiaIcon.png">
+
+    <!-- Structured Data (JSON-LD): SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "NavigatoreOSM",
+      "operatingSystem": "iOS 9.0 to 9.3.6 (Optimized for Apple A5 32-bit armv7)",
+      "applicationCategory": "NavigationApplication",
+      "applicationSubCategory": "Automotive GPS Navigation",
+      "description": "Native in-car GPS navigation app engineered to retrofit and repurpose obsolete Apple iPads (iPad Mini 1st Gen, iPad 2, iPad 3, iPad 4) running iOS 9.3.5. Uses native MapKit GPU acceleration, OpenStreetMap raster tiles, OSRM routing, dynamic speed limits, and UDP GPS tethering.",
+      "softwareVersion": "1.2.2",
+      "memoryRequirements": "25 MB RAM",
+      "processorRequirements": "Apple A5 Dual-Core 1.0 GHz (32-bit armv7)",
+      "offers": {
+        "@type": "Offer",
+        "price": "0.00",
+        "priceCurrency": "USD"
+      },
+      "url": "https://vibe-maribit.github.io/NavigatorOSM/",
+      "downloadUrl": "https://github.com/vibe-maribit/NavigatorOSM/releases",
+      "author": {
+        "@type": "Person",
+        "name": "Nicola"
+      }
+    }
+    </script>
+
+    <!-- Structured Data (JSON-LD): HowTo -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "How to Convert an Obsolete iPad Mini into a Dedicated Car GPS Navigator",
+      "description": "Step-by-step instructions to repurpose a legacy iPad Mini 1 or iPad 2 running iOS 9.3.5 into a permanent, 60 FPS dashboard navigation console.",
+      "totalTime": "PT10M",
+      "tool": [
+        {"@type": "HowToTool", "name": "iPad Mini 1 or iPad 2 running iOS 9.3.5"},
+        {"@type": "HowToTool", "name": "12V 2.1A Car Cigarette Lighter Charger"},
+        {"@type": "HowToTool", "name": "Car Dashboard or Windshield Mount"}
+      ],
+      "step": [
+        {
+          "@type": "HowToStep",
+          "name": "Install Modern SSL Root Certificate",
+          "text": "Open Safari on your legacy iPad and install the Let's Encrypt ISRG Root X1 certificate to fix modern HTTPS connectivity.",
+          "url": "https://vibe-maribit.github.io/NavigatorOSM/isrgrootx1.crt"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Jailbreak iOS 9.3.5 and Install AppSync Unified",
+          "text": "Run kok3shi9 or Phoenix jailbreak, open Cydia, add cydia.akemi.ai, and install AppSync Unified."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Add NavigatorOSM Repository to Cydia",
+          "text": "In Cydia, tap Sources > Edit > Add, enter https://vibe-maribit.github.io/NavigatorOSM/, and install NavigatorOSM.",
+          "url": "https://vibe-maribit.github.io/NavigatorOSM/"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Mount in Car and Tether GPS",
+          "text": "Mount the iPad in your vehicle with a 2.1A charger, turn on your smartphone hotspot (iPhone automatic or Android with GPSTether companion), and enjoy dedicated navigation."
+        }
+      ]
+    }
+    </script>
+
     <style>
         :root {
-            --bg: #121216;
-            --card: #1C1C24;
+            --bg: #090d12;
+            --surface: #121820;
+            --surface-elevated: #1a222d;
+            --border: rgba(255, 255, 255, 0.1);
+            --border-hover: rgba(0, 122, 255, 0.4);
             --accent: #007AFF;
-            --green: #34C759;
-            --text: #FFFFFF;
-            --subtext: #8E8E93;
+            --accent-glow: rgba(0, 122, 255, 0.25);
+            --green: #00C853;
+            --green-glow: rgba(0, 200, 83, 0.25);
+            --orange: #FF9100;
+            --cydia: #8b572a;
+            --text-primary: #F0F6FC;
+            --text-secondary: #8B949E;
+            --text-muted: #6E7681;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
+
+        * {
+            box-sizing: border-box;
             margin: 0;
-            padding: 24px;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 24px 16px 60px;
             display: flex;
             justify-content: center;
         }
-        .container {
-            max-width: 600px;
+
+        .wrapper {
+            max-width: 860px;
             width: 100%;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
+
+        /* Language Toggle Bar */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
         }
-        .header h1 {
-            margin: 0;
-            font-size: 28px;
-            color: var(--text);
+        .lang-switch {
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3px;
         }
-        .header p {
-            color: var(--subtext);
-            font-size: 15px;
-            margin-top: 8px;
-        }
-        .card {
-            background: var(--card);
+        .lang-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 6px 14px;
             border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-            border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
-        .btn {
-            display: block;
-            text-align: center;
+        .lang-btn.active {
             background: var(--accent);
-            color: white;
-            padding: 14px 20px;
-            border-radius: 12px;
-            font-weight: bold;
-            font-size: 16px;
-            text-decoration: none;
-            margin-top: 15px;
-            transition: opacity 0.2s;
+            color: #fff;
+            box-shadow: 0 2px 8px var(--accent-glow);
         }
-        .btn-cydia {
-            background: #8b572a;
-        }
-        .btn-green {
-            background: var(--green);
-        }
-        .btn:hover {
-            opacity: 0.9;
-        }
-        .repo-url {
-            background: #000;
-            padding: 12px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 14px;
-            color: #40C4FF;
-            word-break: break-all;
-            user-select: all;
-            margin-top: 10px;
+
+        /* Hero Section */
+        .hero {
             text-align: center;
+            padding: 30px 10px 40px;
         }
-        ol {
-            padding-left: 20px;
-            line-height: 1.8;
-            color: #E0E0E0;
+        .tagline-badges {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
         }
         .badge {
-            display: inline-block;
-            background: rgba(0, 122, 255, 0.2);
-            color: var(--accent);
-            padding: 4px 8px;
-            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(0, 122, 255, 0.15);
+            color: #58A6FF;
+            border: 1px solid rgba(0, 122, 255, 0.3);
+            padding: 5px 12px;
+            border-radius: 20px;
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .badge-green {
+            background: rgba(0, 200, 83, 0.15);
+            color: #00E676;
+            border-color: rgba(0, 200, 83, 0.3);
+        }
+        .badge-orange {
+            background: rgba(255, 145, 0, 0.15);
+            color: #FFA726;
+            border-color: rgba(255, 145, 0, 0.3);
+        }
+
+        .hero h1 {
+            font-size: 38px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+            margin-bottom: 14px;
+            background: linear-gradient(135deg, #FFFFFF 30%, #58A6FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p.subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            max-width: 680px;
+            margin: 0 auto 28px;
+        }
+
+        /* CTA Buttons */
+        .cta-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 13px 22px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .btn-cydia {
+            background: var(--cydia);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(139, 87, 42, 0.4);
+        }
+        .btn-cydia:hover {
+            filter: brightness(1.15);
+            transform: translateY(-2px);
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 4px 14px var(--accent-glow);
+        }
+        .btn-primary:hover {
+            filter: brightness(1.15);
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background: var(--surface-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            border-color: var(--border-hover);
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
+        }
+
+        /* Mission / Callout Banner */
+        .mission-banner {
+            background: linear-gradient(135deg, rgba(0, 122, 255, 0.12) 0%, rgba(0, 200, 83, 0.08) 100%);
+            border: 1px solid rgba(0, 122, 255, 0.25);
+            border-radius: 16px;
+            padding: 22px 24px;
+            margin-bottom: 36px;
+        }
+        .mission-banner h2 {
+            font-size: 20px;
             margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .mission-banner p {
+            color: #C9D1D9;
+            font-size: 14.5px;
+            line-height: 1.6;
+        }
+
+        /* Feature Bento Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 22px;
+            transition: all 0.25s ease;
+        }
+        .card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .card-icon {
+            font-size: 28px;
+            margin-bottom: 12px;
+            display: inline-block;
+        }
+        .card h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        .card p {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* Repo Box Card */
+        .repo-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 26px;
+            margin-bottom: 36px;
+            text-align: center;
+        }
+        .repo-box h2 {
+            font-size: 22px;
+            margin-bottom: 10px;
+        }
+        .repo-box p {
+            color: var(--text-secondary);
+            font-size: 14.5px;
+            max-width: 600px;
+            margin: 0 auto 16px;
+        }
+        .repo-input-group {
+            display: flex;
+            max-width: 520px;
+            margin: 0 auto 14px;
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .repo-input-group input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #58A6FF;
+            padding: 12px 14px;
+            font-family: monospace;
+            font-size: 13.5px;
+            outline: none;
+        }
+        .copy-btn {
+            background: var(--surface-elevated);
+            color: #fff;
+            border: none;
+            padding: 0 18px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .copy-btn:hover {
+            background: var(--accent);
+        }
+
+        /* Step-by-Step Instructions */
+        .steps-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 26px;
+            margin-bottom: 36px;
+        }
+        .steps-card h2 {
+            font-size: 22px;
+            margin-bottom: 16px;
+        }
+        .step-item {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .step-item:last-child {
+            margin-bottom: 0;
+        }
+        .step-num {
+            background: var(--surface-elevated);
+            color: var(--accent);
+            border: 1px solid rgba(0, 122, 255, 0.3);
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+        .step-content h4 {
+            font-size: 16px;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+        }
+        .step-content p {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .step-content a {
+            color: #58A6FF;
+            text-decoration: none;
+        }
+        .step-content a:hover {
+            text-decoration: underline;
+        }
+
+        /* Downloads Table / List */
+        .downloads-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 26px;
+            margin-bottom: 36px;
+        }
+        .downloads-card h2 {
+            font-size: 22px;
+            margin-bottom: 14px;
+        }
+        .download-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .download-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .download-meta h4 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .download-meta p {
+            font-size: 12.5px;
+            color: var(--text-muted);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding-top: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+            border-top: 1px solid var(--border);
+        }
+        footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+        footer a:hover {
+            color: var(--text-primary);
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .hero h1 {
+                font-size: 28px;
+            }
+            .btn {
+                width: 100%;
+            }
+            .download-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .download-row .btn {
+                width: auto;
+                padding: 8px 16px;
+                font-size: 13px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <span class="badge">RETROFIT IPAD MINI 1</span>
-            <h1>🗺️ NavigatoreOSM</h1>
-            <p>Navigatore GPS offline nativo per iOS 9.3.5</p>
+    <div class="wrapper">
+
+        <!-- Header Bar with Language Switcher -->
+        <div class="top-bar">
+            <div style="font-weight: 800; font-size: 16px; letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px;">
+                <span>🗺️</span> NavigatoreOSM
+            </div>
+            <div class="lang-switch">
+                <button class="lang-btn active" id="btn-en" onclick="setLanguage('en')">EN</button>
+                <button class="lang-btn" id="btn-it" onclick="setLanguage('it')">IT</button>
+            </div>
         </div>
 
-        <!-- Card Aggiungi a Cydia -->
-        <div class="card">
-            <h2>📲 Aggiornamenti Senza Cavo (Cydia OTA)</h2>
-            <p>Aggiungi questo repository su Cydia per installare e ricevere tutti i futuri aggiornamenti direttamente via Wi-Fi sull'iPad:</p>
+        <!-- HERO SECTION -->
+        <header class="hero">
+            <div class="tagline-badges">
+                <span class="badge">♻️ Retrofit & Repurpose</span>
+                <span class="badge badge-green">⚡ Pure Native 60 FPS</span>
+                <span class="badge badge-orange">🚗 iOS 9.3.5 / A5</span>
+                <span class="badge">🆓 100% Free & Open Source</span>
+            </div>
+
+            <h1 data-i18n="hero_title">Give Obsolete iPads a Second Life in Your Car</h1>
+            <p class="subtitle" data-i18n="hero_subtitle">
+                Transform forgotten iPad Mini 1, iPad 2/3/4 tablets into dedicated, high-performance in-car GPS dashboards. 100% native Objective-C with MapKit GPU acceleration, OSRM turn-by-turn guidance, and zero modern web bloat.
+            </p>
+
+            <div class="cta-group">
+                <a class="btn btn-cydia" href="cydia://url/https://cydia.saurik.com/api/share#?source=https://vibe-maribit.github.io/NavigatorOSM/">
+                    <span>➕</span> <span data-i18n="btn_add_cydia">Add to Cydia (from iPad)</span>
+                </a>
+                <a class="btn btn-primary" href="https://github.com/vibe-maribit/NavigatorOSM/releases">
+                    <span>📦</span> <span data-i18n="btn_releases">GitHub Releases (.ipa / .apk)</span>
+                </a>
+                <a class="btn btn-secondary" href="https://github.com/vibe-maribit/NavigatorOSM">
+                    <span>⭐</span> <span data-i18n="btn_github">View Source Code</span>
+                </a>
+            </div>
+        </header>
+
+        <!-- MISSION CALLOUT -->
+        <section class="mission-banner">
+            <h2><span>🌱</span> <span data-i18n="mission_title">Combating E-Waste by Engineering Purpose</span></h2>
+            <p data-i18n="mission_desc">
+                Millions of iPad Mini 1 and iPad 2 tablets sit unused in drawers simply because modern web browsers and bloatware exceed their 512 MB RAM. By writing clean, hardware-accelerated 32-bit native code, NavigatoreOSM uses <strong>under 25 MB of RAM</strong>—giving your legacy device an indefinite second life as a dedicated, permanently mounted vehicle navigation console.
+            </p>
+        </section>
+
+        <!-- FEATURES GRID -->
+        <section class="grid">
+            <div class="card">
+                <div class="card-icon">🚀</div>
+                <h3 data-i18n="feat_perf_title">Native 60 FPS & &lt;25 MB RAM</h3>
+                <p data-i18n="feat_perf_desc">Pure Objective-C and MapKit bypass WebKit entirely. No crashes, no memory leaks, and buttery-smooth 3D perspective camera panning on Apple A5 silicon.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🗺️</div>
+                <h3 data-i18n="feat_maps_title">Tri-Mode Map Cartography</h3>
+                <p data-i18n="feat_maps_desc">Cycle between Standard OpenStreetMap, Esri Dark Canvas for glare-free night driving, and Apple Hybrid Satellite with zero API key quotas.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🗣️</div>
+                <h3 data-i18n="feat_voice_title">Smart Audio Guidance & Ducking</h3>
+                <p data-i18n="feat_voice_desc">Discrete checkpoint announcements (1km, 500m, 200m, Imminent) that automatically duck background car music without repetitive chatter.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🏎️</div>
+                <h3 data-i18n="feat_speed_title">Speedometer & Dynamic Limits</h3>
+                <p data-i18n="feat_speed_desc">Real-time GPS velocity gauge with automated OpenStreetMap maxspeed limits and high-visibility flashing alerts when exceeding speed.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🔄</div>
+                <h3 data-i18n="feat_recalc_title">Auto Off-Route Recalculation</h3>
+                <p data-i18n="feat_recalc_desc">Intelligent 45-meter perpendicular corridor tracking detects deviations instantly and provisions updated routes hands-free.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">📡</div>
+                <h3 data-i18n="feat_tether_title">Dual iPhone & Android GPS Tethering</h3>
+                <p data-i18n="feat_tether_desc">Works seamlessly with Wi-Fi only iPads: iPhone CoreLocation forwarding or Android UDP 8888 socket streaming via companion app.</p>
+            </div>
+        </section>
+
+        <!-- REPO URL COPY BOX -->
+        <section class="repo-box">
+            <h2 data-i18n="repo_title">📲 Official Cydia OTA Repository</h2>
+            <p data-i18n="repo_desc">Add this repository URL to Cydia on your jailbroken iPad to install and receive over-the-air updates directly over Wi-Fi:</p>
             
-            <a class="btn btn-cydia" href="cydia://url/https://cydia.saurik.com/api/share#?source=https://vibe-maribit.github.io/NavigatorOSM/">
-                ➕ Aggiungi a Cydia (da iPad)
-            </a>
+            <div class="repo-input-group">
+                <input type="text" id="repoUrl" value="https://vibe-maribit.github.io/NavigatorOSM/" readonly>
+                <button class="copy-btn" id="copyBtn" onclick="copyRepoUrl()" data-i18n="btn_copy">Copy URL</button>
+            </div>
 
-            <p style="margin-top: 20px; font-size: 14px; color: var(--subtext);">Oppure aggiungi manualmente l'URL sorgente:</p>
-            <div class="repo-url">https://vibe-maribit.github.io/NavigatorOSM/</div>
-        </div>
+            <div style="font-size: 13px; color: var(--text-muted);">
+                <span data-i18n="cert_notice">Requires iOS 9 ISRG Root X1 Certificate to connect to HTTPS:</span>
+                <a href="isrgrootx1.crt" style="color: #58A6FF; font-weight: bold; margin-left: 5px;">isrgrootx1.crt</a>
+            </div>
+        </section>
 
-        <!-- Istruzioni Cydia -->
-        <div class="card">
-            <h3>📖 Come Aggiungere la Sorgente su iPad:</h3>
-            <ol>
-                <li>Apri <strong>Cydia</strong> sull'iPad Mini.</li>
-                <li>Tocca <strong>Sorgenti</strong> nella barra in basso.</li>
-                <li>Tocca <strong>Modifica</strong> (in alto a destra) e poi <strong>Aggiungi</strong> (in alto a sinistra).</li>
-                <li>Incolla l'indirizzo: <code>https://vibe-maribit.github.io/NavigatorOSM/</code></li>
-                <li>Tocca <strong>Aggiungi sorgente</strong> e attendi il ricaricamento.</li>
-                <li>Ora troverai <strong>NavigatoreOSM</strong> nei pacchetti del repo, pronto per l'installazione!</li>
-            </ol>
-        </div>
-
-        <!-- Download Diretti -->
-        <div class="card">
-            <h3>📦 Download Diretti (GitHub Releases)</h3>
-            <p style="font-size: 14px; color: var(--subtext);">Scarica i pacchetti compilati pronti all'uso:</p>
+        <!-- SETUP GUIDE -->
+        <section class="steps-card">
+            <h2 data-i18n="setup_title">📖 4-Step Quick Setup Guide</h2>
             
-            <a class="btn btn-green" href="https://github.com/vibe-maribit/NavigatorOSM/releases">
-                ⬇️ Vai alle Release su GitHub
-            </a>
-            <ul style="margin-top: 15px; color: #BBB; font-size: 14px; line-height: 1.6;">
-                <li><strong>NavigatoreOSM.ipa</strong>: Installazione USB con ideviceinstaller.</li>
-                <li><strong>NavigatoreOSM.deb</strong>: Pacchetto Cydia per installazione manuale.</li>
-                <li><strong>GPSTether.apk</strong>: App Android per condividere il GPS dello smartphone via Hotspot.</li>
-            </ul>
-        </div>
+            <div class="step-item">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <h4 data-i18n="step1_title">Install Modern SSL Root Certificate</h4>
+                    <p data-i18n="step1_desc">Open Safari on your iPad and tap <a href="isrgrootx1.crt">isrgrootx1.crt</a> to install the Let's Encrypt CA profile. This fixes HTTPS connections for Cydia and GitHub Pages on iOS 9.</p>
+                </div>
+            </div>
+
+            <div class="step-item">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <h4 data-i18n="step2_title">Jailbreak & Install AppSync Unified</h4>
+                    <p data-i18n="step2_desc">Run <strong>kok3shi9</strong> or <strong>Phoenix</strong> on iOS 9.3.5. In Cydia, add <code>https://cydia.akemi.ai/</code> and install <strong>AppSync Unified</strong> to permanently enable unsigned packages.</p>
+                </div>
+            </div>
+
+            <div class="step-item">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <h4 data-i18n="step3_title">Add Source & Install NavigatoreOSM</h4>
+                    <p data-i18n="step3_desc">In Cydia, tap <em>Sources &gt; Edit &gt; Add</em>, enter <code>https://vibe-maribit.github.io/NavigatorOSM/</code>, and install <strong>NavigatorOSM</strong>.</p>
+                </div>
+            </div>
+
+            <div class="step-item">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <h4 data-i18n="step4_title">Mount in Vehicle & Tether GPS</h4>
+                    <p data-i18n="step4_desc">Mount your iPad Mini horizontally, plug into a 12V 2.1A charger, and turn on your phone's Wi-Fi hotspot (iPhone passes GPS automatically; for Android run our companion GPSTether.apk).</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- DIRECT DOWNLOADS -->
+        <section class="downloads-card">
+            <h2 data-i18n="downloads_title">📦 Ready-to-Use Binary Packages</h2>
+            
+            <div class="download-row">
+                <div class="download-meta">
+                    <h4>NavigatoreOSM.ipa</h4>
+                    <p data-i18n="dl_ipa_desc">Signed iOS application bundle for 1-command USB install (Linux / macOS) or Sideloadly.</p>
+                </div>
+                <a class="btn btn-secondary" href="https://github.com/vibe-maribit/NavigatorOSM/releases">Download IPA</a>
+            </div>
+
+            <div class="download-row">
+                <div class="download-meta">
+                    <h4>com.maribit.navigatoreosm.deb</h4>
+                    <p data-i18n="dl_deb_desc">Debian Cydia archive package for manual installation via Filza or DPKG.</p>
+                </div>
+                <a class="btn btn-secondary" href="https://github.com/vibe-maribit/NavigatorOSM/releases">Download DEB</a>
+            </div>
+
+            <div class="download-row">
+                <div class="download-meta">
+                    <h4>GPSTether.apk</h4>
+                    <p data-i18n="dl_apk_desc">Android companion app to stream GPS fixes over Hotspot UDP 8888 to Wi-Fi-only iPads.</p>
+                </div>
+                <a class="btn btn-secondary" href="https://github.com/vibe-maribit/NavigatorOSM/releases">Download APK</a>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>
+                <strong>NavigatoreOSM</strong> is free software licensed under the <a href="https://github.com/vibe-maribit/NavigatorOSM/blob/develop/LICENSE">MIT License</a>.<br>
+                Map Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>. Night tiles © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>. Routing powered by <a href="http://project-osrm.org/" target="_blank" rel="noopener">Project OSRM</a>.<br>
+                Engineered with pride to combat e-waste and keep legendary Apple hardware alive.
+            </p>
+        </footer>
+
     </div>
+
+    <!-- Interactive Multilingual Logic & Clipboard Script -->
+    <script>
+        const translations = {
+            en: {
+                hero_title: "Give Obsolete iPads a Second Life in Your Car",
+                hero_subtitle: "Transform forgotten iPad Mini 1, iPad 2/3/4 tablets into dedicated, high-performance in-car GPS dashboards. 100% native Objective-C with MapKit GPU acceleration, OSRM turn-by-turn guidance, and zero modern web bloat.",
+                btn_add_cydia: "Add to Cydia (from iPad)",
+                btn_releases: "GitHub Releases (.ipa / .apk)",
+                btn_github: "View Source Code",
+                mission_title: "Combating E-Waste by Engineering Purpose",
+                mission_desc: "Millions of iPad Mini 1 and iPad 2 tablets sit unused in drawers simply because modern web browsers and bloatware exceed their 512 MB RAM. By writing clean, hardware-accelerated 32-bit native code, NavigatoreOSM uses under 25 MB of RAM—giving your legacy device an indefinite second life as a dedicated, permanently mounted vehicle navigation console.",
+                feat_perf_title: "Native 60 FPS & <25 MB RAM",
+                feat_perf_desc: "Pure Objective-C and MapKit bypass WebKit entirely. No crashes, no memory leaks, and buttery-smooth 3D perspective camera panning on Apple A5 silicon.",
+                feat_maps_title: "Tri-Mode Map Cartography",
+                feat_maps_desc: "Cycle between Standard OpenStreetMap, Esri Dark Canvas for glare-free night driving, and Apple Hybrid Satellite with zero API key quotas.",
+                feat_voice_title: "Smart Audio Guidance & Ducking",
+                feat_voice_desc: "Discrete checkpoint announcements (1km, 500m, 200m, Imminent) that automatically duck background car music without repetitive chatter.",
+                feat_speed_title: "Speedometer & Dynamic Limits",
+                feat_speed_desc: "Real-time GPS velocity gauge with automated OpenStreetMap maxspeed limits and high-visibility flashing alerts when exceeding speed.",
+                feat_recalc_title: "Auto Off-Route Recalculation",
+                feat_recalc_desc: "Intelligent 45-meter perpendicular corridor tracking detects deviations instantly and provisions updated routes hands-free.",
+                feat_tether_title: "Dual iPhone & Android GPS Tethering",
+                feat_tether_desc: "Works seamlessly with Wi-Fi only iPads: iPhone CoreLocation forwarding or Android UDP 8888 socket streaming via companion app.",
+                repo_title: "📲 Official Cydia OTA Repository",
+                repo_desc: "Add this repository URL to Cydia on your jailbroken iPad to install and receive over-the-air updates directly over Wi-Fi:",
+                btn_copy: "Copy URL",
+                cert_notice: "Requires iOS 9 ISRG Root X1 Certificate to connect to HTTPS:",
+                setup_title: "📖 4-Step Quick Setup Guide",
+                step1_title: "Install Modern SSL Root Certificate",
+                step1_desc: "Open Safari on your iPad and tap isrgrootx1.crt to install the Let's Encrypt CA profile. This fixes HTTPS connections for Cydia and GitHub Pages on iOS 9.",
+                step2_title: "Jailbreak & Install AppSync Unified",
+                step2_desc: "Run kok3shi9 or Phoenix on iOS 9.3.5. In Cydia, add https://cydia.akemi.ai/ and install AppSync Unified to permanently enable unsigned packages.",
+                step3_title: "Add Source & Install NavigatoreOSM",
+                step3_desc: "In Cydia, tap Sources > Edit > Add, enter https://vibe-maribit.github.io/NavigatorOSM/, and install NavigatorOSM.",
+                step4_title: "Mount in Vehicle & Tether GPS",
+                step4_desc: "Mount your iPad Mini horizontally, plug into a 12V 2.1A charger, and turn on your phone's Wi-Fi hotspot (iPhone passes GPS automatically; for Android run our companion GPSTether.apk).",
+                downloads_title: "📦 Ready-to-Use Binary Packages",
+                dl_ipa_desc: "Signed iOS application bundle for 1-command USB install (Linux / macOS) or Sideloadly.",
+                dl_deb_desc: "Debian Cydia archive package for manual installation via Filza or DPKG.",
+                dl_apk_desc: "Android companion app to stream GPS fixes over Hotspot UDP 8888 to Wi-Fi-only iPads."
+            },
+            it: {
+                hero_title: "Dai una Seconda Vita ai Vecchi iPad nella Tua Auto",
+                hero_subtitle: "Trasforma iPad Mini 1 e iPad 2/3/4 dimenticati in navigatori GPS fissi ad altissime prestazioni per auto. 100% nativo Objective-C con accelerazione GPU MapKit, guida turn-by-turn OSRM e zero lentezze del web moderno.",
+                btn_add_cydia: "Aggiungi a Cydia (da iPad)",
+                btn_releases: "Release GitHub (.ipa / .apk)",
+                btn_github: "Codice Sorgente su GitHub",
+                mission_title: "Combattere l'E-Waste Restituendo Utilità",
+                mission_desc: "Milioni di iPad Mini 1 e iPad 2 giacciono inutilizzati nei cassetti solo perché le app moderne e il browser superano i 512 MB di RAM. Grazie al codice nativo a 32-bit super ottimizzato, NavigatoreOSM consuma meno di 25 MB di RAM, trasformando il tablet in una stazione di navigazione fissa sempre reattiva.",
+                feat_perf_title: "Nativo 60 FPS & <25 MB di RAM",
+                feat_perf_desc: "Objective-C e MapKit puri escludono totalmente WebKit. Niente crash per memoria esaurita e rotazione 3D della mappa fluida a 60 FPS stabili.",
+                feat_maps_title: "Cartografia Tri-Modale",
+                feat_maps_desc: "Passa in un tocco da OpenStreetMap standard, al tema notturno antiriflesso Esri Dark Canvas, fino al Satellite Ibrido di Apple senza costi API.",
+                feat_voice_title: "Guida Vocale Smart & Audio Ducking",
+                feat_voice_desc: "Annunci vocali discreti a checkpoint precisi (1km, 500m, 200m, Ora) che abbassano temporaneamente la musica in auto senza parlare in continuazione.",
+                feat_speed_title: "Tachimetro & Limiti Stradali Live",
+                feat_speed_desc: "Quadrante live della velocità GPS con lettura automatica dei limiti da OpenStreetMap e allarme rosso visivo lampeggiante in caso di eccesso.",
+                feat_recalc_title: "Ricalcolo Intelligente Fuori Rotta",
+                feat_recalc_desc: "Monitoraggio continuo del corridoio stradale: se devii oltre 45 metri ricalcola istantaneamente il percorso senza dover toccare l'iPad.",
+                feat_tether_title: "Tethering GPS iPhone & Android",
+                feat_tether_desc: "Perfetto per iPad solo Wi-Fi: condivisione automatica con iPhone oppure ricevitore socket UDP porta 8888 con la nostra app Android.",
+                repo_title: "📲 Repository Ufficiale Cydia OTA",
+                repo_desc: "Aggiungi questo URL di repository su Cydia per installare e aggiornare l'applicazione via Wi-Fi direttamente dal tablet:",
+                btn_copy: "Copia URL",
+                cert_notice: "Richiede il certificato radice ISRG Root X1 per connettersi ad HTTPS su iOS 9:",
+                setup_title: "📖 Guida Rapida in 4 Passaggi",
+                step1_title: "Installa il Certificato Root SSL",
+                step1_desc: "Apri Safari sull'iPad e tocca isrgrootx1.crt per installare il certificato Let's Encrypt. Risolve gli errori HTTPS per Cydia e GitHub Pages su iOS 9.",
+                step2_title: "Effettua il Jailbreak e Installa AppSync",
+                step2_desc: "Esegui kok3shi9 o Phoenix su iOS 9.3.5. In Cydia aggiungi https://cydia.akemi.ai/ e installa AppSync Unified per accettare pacchetti non firmati.",
+                step3_title: "Aggiungi la Sorgente e Installa",
+                step3_desc: "In Cydia vai su Sorgenti > Modifica > Aggiungi, inserisci https://vibe-maribit.github.io/NavigatorOSM/ e installa NavigatorOSM.",
+                step4_title: "Monta in Auto e Collega il GPS",
+                step4_desc: "Posiziona l'iPad in orizzontale, collegalo a un caricatore da 12V 2.1A e attiva l'hotspot del telefono (iPhone passa il GPS in automatico; per Android avvia GPSTether.apk).",
+                downloads_title: "📦 Pacchetti Binari Pronti all'Uso",
+                dl_ipa_desc: "Pacchetto applicativo iOS per installazione USB veloce (Linux / macOS) o Sideloadly.",
+                dl_deb_desc: "Archivio Debian Cydia per installazione manuale via Filza o riga di comando DPKG.",
+                dl_apk_desc: "Companion app Android per trasmettere il fix GPS via Hotspot UDP 8888 all'iPad."
+            }
+        };
+
+        function setLanguage(lang) {
+            document.documentElement.lang = lang;
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang] && translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+            document.getElementById('btn-it').classList.toggle('active', lang === 'it');
+        }
+
+        function copyRepoUrl() {
+            const input = document.getElementById('repoUrl');
+            input.select();
+            input.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(input.value).then(() => {
+                const btn = document.getElementById('copyBtn');
+                const originalText = btn.textContent;
+                btn.textContent = (document.documentElement.lang === 'it') ? "Copiato! ✓" : "Copied! ✓";
+                btn.style.background = "var(--green)";
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = "";
+                }, 2000);
+            });
+        }
+    </script>
 </body>
 </html>
