@@ -39,6 +39,7 @@ Millions of legacy Apple tablets—especially the **iPad Mini 1st Gen (A1432 / M
 | Feature | Description |
 | :--- | :--- |
 | 🏎️ **Waze-Style 3D Cockpit** | One-tap switchable **3D perspective cockpit view** (56° pitch, vehicle tracking, dynamic speed-based altitude zoom) and **2D top-down overview**. |
+| 🎯 **Dead Reckoning & Map-Matching** | Continuous display loop interpolating GPS speed as a progress gradient along the road polyline. Reconciles longitudinal fixes within a reasonable tolerance corridor without jerking sideways to chase noisy GPS readings. |
 | 🛣️ **OSRM Multi-Route Corridors** | Calculates alternative routes on the fly (e.g., motorway vs. scenic state roads) with delta badges (`⭐ Optimal`, `🚀 Fastest`, `🍃 Alternative`) and relative $+min$ / $+km$ estimates. |
 | 🚦 **Dynamic Road Speed Limits** | Real-time road type classification based on highway tags (Autostrada 130 km/h, Expressway 110 km/h, Secondary 90 km/h, Urban 50 km/h) with circular speedometer badge and visual overspeed alert. |
 | 🛰️ **Tri-Mode Free Maps** | Instant cycling between **☀️ Day (OpenStreetMap Standard)**, **🌙 Night (Esri World Dark Canvas)**, and **🛰️ Satellite (Apple Hybrid photography with road overlays)**. |

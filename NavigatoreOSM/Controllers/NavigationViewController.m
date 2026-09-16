@@ -15,14 +15,23 @@
 #import "../Views/POIResultsCardView.h"
 #import "../Services/LocalizationManager.h"
 #import "../Services/FuelPriceService.h"
+#import "../Services/RouteTrackingEngine.h"
+#import "../Views/VehicleAnnotationView.h"
 
-@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate, RouteSummaryViewControllerDelegate>
+@interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate, RouteSummaryViewControllerDelegate, RouteTrackingEngineDelegate, UIGestureRecognizerDelegate>
 
 @property (nonatomic, strong) OSMTileOverlay *osmOverlay;
 @property (nonatomic, strong) TrafficTileOverlay *trafficOverlay;
 @property (nonatomic, strong) CLLocationManager *locationManager;
 @property (nonatomic, strong) CLLocation *currentLocation;
 @property (nonatomic, assign) CLLocationDirection currentHeading;
+
+// Motore di Tracciamento & Dead Reckoning
+@property (nonatomic, strong) RouteTrackingEngine *trackingEngine;
+@property (nonatomic, strong) VehicleAnnotation *vehicleAnnotation;
+@property (nonatomic, strong) CADisplayLink *displayLink;
+@property (nonatomic, assign) CFTimeInterval lastFrameTime;
+@property (nonatomic, assign) BOOL isTrackingVehicle;
 
 // UI HUD Moderna Waze / Google Maps
 @property (nonatomic, strong) ManeuverHUDView *maneuverHUD;
@@ -111,6 +120,18 @@
     [NetworkGPSReceiver sharedReceiver].delegate = self;
     [[NetworkGPSReceiver sharedReceiver] startWithSavedSettings];
 
+    // 6b. Inizializza Motore di Tracciamento & Annotazione Veicolo (Dead Reckoning a 30 FPS)
+    self.trackingEngine = [[RouteTrackingEngine alloc] init];
+    self.trackingEngine.delegate = self;
+    self.vehicleAnnotation = [[VehicleAnnotation alloc] init];
+    self.isTrackingVehicle = YES;
+
+    UIPanGestureRecognizer *mapPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapPan:)];
+    mapPan.delegate = self;
+    [self.mapView addGestureRecognizer:mapPan];
+
+    [self startDisplayLink];
+
     self.poiAnnotations = [NSMutableArray array];
 
     // 7. Costruisci l'interfaccia grafica moderna in stile Google Maps / Waze
@@ -120,12 +141,29 @@
                                              selector:@selector(handleLanguageChanged:)
                                                  name:kAppLanguagePreferenceChangedNotification
                                                object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleAppDidEnterBackground)
+                                                 name:UIApplicationDidEnterBackgroundNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleAppWillEnterForeground)
+                                                 name:UIApplicationWillEnterForegroundNotification
+                                               object:nil];
 
     // Messaggio vocale di avvio
     [[VoiceGuidanceService sharedService] speak:NLString(@"READY_3D", @"Navigatore pronto con visuale 3D prospettica.")];
 
     // Aggiornamento prezzi carburanti online MIMIT in background
     [[FuelPriceService sharedService] fetchOnlinePricesAroundCoordinate:CLLocationCoordinate2DMake(45.4642, 9.1900) completion:nil];
+}
+
+- (void)handleAppDidEnterBackground {
+    self.displayLink.paused = YES;
+}
+
+- (void)handleAppWillEnterForeground {
+    self.lastFrameTime = CACurrentMediaTime();
+    self.displayLink.paused = NO;
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -346,15 +384,48 @@
     [[VoiceGuidanceService sharedService] speak:announcement];
 }
 
+- (void)startDisplayLink {
+    if (self.displayLink) return;
+    self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(handleDisplayLink:)];
+    self.displayLink.frameInterval = 2; // 30 FPS: perfetto per A5 (silky smooth e leggero su CPU)
+    [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    self.lastFrameTime = CACurrentMediaTime();
+}
+
+- (void)stopDisplayLink {
+    if (self.displayLink) {
+        [self.displayLink invalidate];
+        self.displayLink = nil;
+    }
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return YES;
+}
+
+- (void)handleMapPan:(UIPanGestureRecognizer *)pan {
+    if (pan.state == UIGestureRecognizerStateBegan) {
+        self.isTrackingVehicle = NO;
+        self.recenterButton.hidden = NO;
+    }
+}
+
 - (void)applyCameraPerspectiveAnimated:(BOOL)animated {
-    CLLocationCoordinate2D center = self.currentLocation ? self.currentLocation.coordinate : self.mapView.centerCoordinate;
-    CLLocationDirection heading = self.currentHeading;
+    CLLocationCoordinate2D center = (self.isNavigating && self.trackingEngine.hasActiveRoute)
+        ? self.trackingEngine.currentCoordinate
+        : (self.currentLocation ? self.currentLocation.coordinate : self.mapView.centerCoordinate);
+
+    CLLocationDirection heading = (self.isNavigating && self.trackingEngine.hasActiveRoute)
+        ? self.trackingEngine.currentHeading
+        : self.currentHeading;
 
     if (self.is3DMode) {
         // Modalità 3D Prospettica Cockpit (stile Waze/Google Maps)
-        double speed = (self.currentLocation && self.currentLocation.speed > 0) ? self.currentLocation.speed : 0;
-        double altitude = 420.0 + (speed * 3.5);
-        altitude = MIN(altitude, 750.0);
+        double speed = (self.isNavigating && self.trackingEngine.hasActiveRoute)
+            ? self.trackingEngine.smoothedSpeed
+            : ((self.currentLocation && self.currentLocation.speed > 0) ? self.currentLocation.speed : 0);
+        double altitude = 400.0 + (speed * 3.2);
+        altitude = MIN(altitude, 720.0);
 
         MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:center
                                                       fromEyeCoordinate:center
@@ -366,7 +437,7 @@
         // Modalità 2D Pianta Ortogonale
         MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:center
                                                       fromEyeCoordinate:center
-                                                            eyeAltitude:1400.0];
+                                                            eyeAltitude:1350.0];
         cam.pitch = 0.0; // Piatta a 0°
         cam.heading = heading;
         [self.mapView setCamera:cam animated:animated];
@@ -374,9 +445,9 @@
 }
 
 - (void)recenterMap {
-    if (self.currentLocation) {
-        [self applyCameraPerspectiveAnimated:YES];
-    }
+    self.isTrackingVehicle = YES;
+    self.recenterButton.hidden = YES;
+    [self applyCameraPerspectiveAnimated:YES];
 }
 
 #pragma mark - Azioni Flottanti
@@ -489,36 +560,6 @@
     [self.muteButton setTitle:(voice.isMuted ? @"🔇" : @"🔊") forState:UIControlStateNormal];
 }
 
-static double DistanceFromCoordinateToPolyline(CLLocationCoordinate2D coord, MKPolyline *polyline) {
-    if (!polyline || polyline.pointCount == 0) return 0.0;
-    MKMapPoint p = MKMapPointForCoordinate(coord);
-    NSUInteger count = polyline.pointCount;
-    MKMapPoint *pts = polyline.points;
-
-    double minDistance = DBL_MAX;
-    for (NSUInteger i = 0; i < count - 1; i++) {
-        MKMapPoint a = pts[i];
-        MKMapPoint b = pts[i+1];
-        double dx = b.x - a.x;
-        double dy = b.y - a.y;
-        double lenSq = dx * dx + dy * dy;
-        MKMapPoint closest;
-        if (lenSq == 0.0) {
-            closest = a;
-        } else {
-            double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
-            if (t < 0.0) t = 0.0;
-            else if (t > 1.0) t = 1.0;
-            closest = MKMapPointMake(a.x + t * dx, a.y + t * dy);
-        }
-        double d = MKMetersBetweenMapPoints(p, closest);
-        if (d < minDistance) {
-            minDistance = d;
-        }
-    }
-    return minDistance;
-}
-
 static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     if (!roadName || roadName.length == 0) return 50;
     
@@ -586,6 +627,8 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     self.currentRoute = nil;
     self.currentStepIndex = 0;
     self.offRouteConsecutiveCount = 0;
+    [self.trackingEngine clearActiveRoute];
+    self.mapView.showsUserLocation = YES;
 
     [self.maneuverHUD reset];
     [[VoiceGuidanceService sharedService] resetManeuverTracking];
@@ -783,6 +826,14 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     [self.tripBar updateRemainingDistance:self.currentRoute.totalDistance
                                  duration:self.currentRoute.totalDuration
                             trafficStatus:self.currentRoute.trafficDescription];
+
+    // Attiva motore di tracciamento mezzeria e annotazione veicolo
+    [self.trackingEngine setActiveRoute:selectedRoute initialLocation:self.currentLocation];
+    if (![self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+        [self.mapView addAnnotation:self.vehicleAnnotation];
+    }
+    self.mapView.showsUserLocation = NO;
+    self.isTrackingVehicle = YES;
 
     [self applyCameraPerspectiveAnimated:YES];
 
@@ -989,6 +1040,18 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         return nil;
     }
 
+    if ([annotation isKindOfClass:[VehicleAnnotation class]]) {
+        static NSString *vehId = @"VehicleAnnotationView";
+        VehicleAnnotationView *vehView = (VehicleAnnotationView *)[mapView dequeueReusableAnnotationViewWithIdentifier:vehId];
+        if (!vehView) {
+            vehView = [[VehicleAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:vehId];
+        } else {
+            vehView.annotation = annotation;
+        }
+        [vehView updateHeading:self.vehicleAnnotation.heading cameraHeading:self.mapView.camera.heading];
+        return vehView;
+    }
+
     static NSString *poiId = @"POIAnnotation";
     MKPinAnnotationView *pin = (MKPinAnnotationView *)[mapView dequeueReusableAnnotationViewWithIdentifier:poiId];
     if (!pin) {
@@ -1046,71 +1109,147 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
 - (void)processLocationUpdate:(CLLocation *)location heading:(CLLocationDirection)heading {
     self.currentLocation = location;
-    [self.speedometer updateSpeed:location.speed];
-
-    // In modalità 3D e durante la navigazione, la telecamera segue dinamicamente l'auto
-    if (self.is3DMode && self.isNavigating) {
-        [self applyCameraPerspectiveAnimated:YES];
+    if (heading >= 0) {
+        self.currentHeading = heading;
     }
 
-    if (!self.isNavigating || !self.currentRoute) {
-        return;
+    if (self.isNavigating && self.trackingEngine.hasActiveRoute) {
+        // Invia il fix GPS al motore di tracciamento mezzeria:
+        // Verifica la tolleranza (range ragionevole) e riconcilia il progresso longitudinale
+        // senza spostare l'auto lateralmente per inseguire un GPS impreciso!
+        [self.trackingEngine processGPSLocation:location heading:heading];
+    } else {
+        // Guida libera (senza navigazione attiva)
+        [self.speedometer updateSpeed:location.speed];
+        if (![self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+            [self.mapView addAnnotation:self.vehicleAnnotation];
+        }
+        [self.vehicleAnnotation updateCoordinate:location.coordinate heading:heading];
+        VehicleAnnotationView *vehView = (VehicleAnnotationView *)[self.mapView viewForAnnotation:self.vehicleAnnotation];
+        if (vehView) {
+            [vehView updateHeading:heading cameraHeading:self.mapView.camera.heading];
+        }
+
+        if (self.isTrackingVehicle && self.is3DMode) {
+            [self applyCameraPerspectiveAnimated:YES];
+        }
+    }
+}
+
+#pragma mark - Display Link Loop (Avanzamento a 30 FPS con Gradiente di Velocità)
+
+- (void)handleDisplayLink:(CADisplayLink *)link {
+    CFTimeInterval now = CACurrentMediaTime();
+    CFTimeInterval dt = now - self.lastFrameTime;
+    self.lastFrameTime = now;
+    if (dt <= 0.001 || dt > 0.25) {
+        dt = 0.033;
     }
 
-    // Avanzamento manovre e tracciamento percorso
-    if (self.currentStepIndex < self.currentRoute.steps.count) {
-        ManeuverStep *targetStep = self.currentRoute.steps[self.currentStepIndex];
-        CLLocation *stepLoc = [[CLLocation alloc] initWithLatitude:targetStep.coordinate.latitude
-                                                         longitude:targetStep.coordinate.longitude];
-        CLLocationDistance distToStep = [location distanceFromLocation:stepLoc];
+    if (self.isNavigating && self.trackingEngine.hasActiveRoute) {
+        // 1. Avanza lungo la polyline interpolando la velocità del GPS come gradiente
+        [self.trackingEngine updateTickWithDeltaTime:dt];
 
-        // Aggiorna limite di velocità dinamico in base al tipo di strada attuale
+        CLLocationCoordinate2D vehicleCoord = self.trackingEngine.currentCoordinate;
+        CLLocationDirection vehicleHeading = self.trackingEngine.currentHeading;
+        double speed = self.trackingEngine.smoothedSpeed;
+
+        // 2. Aggiorna tachimetro in modo fluido
+        [self.speedometer updateSpeed:speed];
+
+        // 3. Aggiorna annotazione veicolo con rotazione coerente
+        [self.vehicleAnnotation updateCoordinate:vehicleCoord heading:vehicleHeading];
+        VehicleAnnotationView *vehView = (VehicleAnnotationView *)[self.mapView viewForAnnotation:self.vehicleAnnotation];
+        if (vehView) {
+            [vehView updateHeading:vehicleHeading cameraHeading:self.mapView.camera.heading];
+        }
+
+        // 4. Se la telecamera sta inseguendo il veicolo, muovila continuamente a 30 FPS senza animazioni a scatti
+        if (self.isTrackingVehicle) {
+            if (self.is3DMode) {
+                double altitude = 400.0 + (speed * 3.2);
+                altitude = MIN(altitude, 720.0);
+
+                // Offset prospettico: posiziona l'occhio 32m dietro al veicolo e guarda 48m avanti lungo la rotta
+                double rad = vehicleHeading * (M_PI / 180.0);
+                double dBehind = 32.0;
+                double dLookAhead = 48.0;
+
+                double cosLat = MAX(0.2, cos(vehicleCoord.latitude * (M_PI / 180.0)));
+                double latOffsetEye = -(dBehind * cos(rad)) / 111132.0;
+                double lonOffsetEye = -(dBehind * sin(rad)) / (111132.0 * cosLat);
+
+                double latOffsetLook = (dLookAhead * cos(rad)) / 111132.0;
+                double lonOffsetLook = (dLookAhead * sin(rad)) / (111132.0 * cosLat);
+
+                CLLocationCoordinate2D eyeCoord = CLLocationCoordinate2DMake(vehicleCoord.latitude + latOffsetEye,
+                                                                             vehicleCoord.longitude + lonOffsetEye);
+                CLLocationCoordinate2D lookCoord = CLLocationCoordinate2DMake(vehicleCoord.latitude + latOffsetLook,
+                                                                              vehicleCoord.longitude + lonOffsetLook);
+
+                MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:lookCoord
+                                                              fromEyeCoordinate:eyeCoord
+                                                                    eyeAltitude:altitude];
+                cam.pitch = 56.0;
+                cam.heading = vehicleHeading;
+                [self.mapView setCamera:cam animated:NO];
+            } else {
+                MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:vehicleCoord
+                                                              fromEyeCoordinate:vehicleCoord
+                                                                    eyeAltitude:1350.0];
+                cam.pitch = 0.0;
+                cam.heading = vehicleHeading;
+                [self.mapView setCamera:cam animated:NO];
+            }
+        }
+
+        // 5. Aggiorna countdown e HUD
+        [self updateHUDFromTrackingEngine];
+    }
+}
+
+- (void)updateHUDFromTrackingEngine {
+    if (!self.isNavigating || !self.currentRoute) return;
+
+    NSUInteger stepIdx = self.trackingEngine.currentStepIndex;
+    if (stepIdx < self.currentRoute.steps.count) {
+        ManeuverStep *targetStep = self.currentRoute.steps[stepIdx];
+        CLLocationDistance distToStep = self.trackingEngine.remainingDistanceToStep;
+        ManeuverStep *nextStep = (stepIdx + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[stepIdx + 1] : nil;
+
         int dynamicLimit = DeduceSpeedLimitFromRoadName(targetStep.streetName);
         [self.speedometer setDynamicSpeedLimit:dynamicLimit];
 
-        // Calcolo dinamico reale della distanza rimanente verso destinazione (countdown continuo!)
-        CLLocationDistance remainingDist = distToStep;
-        for (NSUInteger i = self.currentStepIndex + 1; i < self.currentRoute.steps.count; i++) {
-            remainingDist += self.currentRoute.steps[i].distance;
-        }
-
-        NSTimeInterval remainingDuration = 0;
-        if (self.currentRoute.totalDistance > 0) {
-            remainingDuration = self.currentRoute.totalDuration * (remainingDist / self.currentRoute.totalDistance);
-        }
-
-        ManeuverStep *nextStep = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
         [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:distToStep nextStep:nextStep];
+
+        CLLocationDistance remainingDist = self.trackingEngine.remainingDistanceToDestination;
+        NSTimeInterval remainingDuration = self.trackingEngine.remainingDuration;
         [self.tripBar updateRemainingDistance:remainingDist duration:remainingDuration trafficStatus:self.currentRoute.trafficDescription];
 
-        // Istruzioni vocali discrete con checkpoint (1000m, 500m, 200m, Ora)
-        [[VoiceGuidanceService sharedService] speakManeuver:targetStep.instruction distanceInMeters:distToStep stepIndex:self.currentStepIndex];
-
-        // Avanzamento manovra al raggiungimento dell'incrocio/svolta
-        if (distToStep < 30.0 && self.currentStepIndex + 1 < self.currentRoute.steps.count) {
-            self.currentStepIndex++;
-            ManeuverStep *newStep = self.currentRoute.steps[self.currentStepIndex];
-            ManeuverStep *stepAfter = (self.currentStepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[self.currentStepIndex + 1] : nil;
-            [self.maneuverHUD updateWithManeuver:newStep distanceToStep:newStep.distance nextStep:stepAfter];
-            self.offRouteConsecutiveCount = 0;
-        } else if (distToStep < 25.0 && self.currentStepIndex + 1 >= self.currentRoute.steps.count) {
-            [[VoiceGuidanceService sharedService] speak:NLString(@"ARRIVED", @"Sei arrivato a destinazione.")];
-            [self cancelCurrentRoute];
-            return;
-        }
-
-        // Rilevamento Fuori Rotta intelligente basato sulla distanza perpendicolare dalla polyline del percorso
-        double distToPolyline = DistanceFromCoordinateToPolyline(location.coordinate, self.currentRoute.polyline);
-        if (distToPolyline > 65.0 && (location.speed < 0 || location.speed > 1.2)) {
-            self.offRouteConsecutiveCount++;
-            if (self.offRouteConsecutiveCount >= 4) {
-                [self triggerAutoReroute];
-                self.offRouteConsecutiveCount = 0;
-            }
-        } else if (distToPolyline <= 45.0) {
-            self.offRouteConsecutiveCount = 0;
-        }
+        // Istruzioni vocali discrete con checkpoint
+        [[VoiceGuidanceService sharedService] speakManeuver:targetStep.instruction distanceInMeters:distToStep stepIndex:stepIdx];
     }
+}
+
+#pragma mark - RouteTrackingEngineDelegate
+
+- (void)routeTrackingEngine:(RouteTrackingEngine *)engine
+        didAdvanceToStepIndex:(NSUInteger)stepIndex
+      remainingDistanceToStep:(CLLocationDistance)distToStep {
+    if (self.currentRoute && stepIndex < self.currentRoute.steps.count) {
+        ManeuverStep *step = self.currentRoute.steps[stepIndex];
+        ManeuverStep *nextStep = (stepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[stepIndex + 1] : nil;
+        [self.maneuverHUD updateWithManeuver:step distanceToStep:distToStep nextStep:nextStep];
+    }
+}
+
+- (void)routeTrackingEngineDidArriveAtDestination:(RouteTrackingEngine *)engine {
+    [[VoiceGuidanceService sharedService] speak:NLString(@"ARRIVED", @"Sei arrivato a destinazione.")];
+    [self cancelCurrentRoute];
+}
+
+- (void)routeTrackingEngineDidDetectOffRoute:(RouteTrackingEngine *)engine atLocation:(CLLocation *)location {
+    [self triggerAutoReroute];
 }
 
 - (void)triggerAutoReroute {
@@ -1156,6 +1295,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
         weakSelf.currentRoute = newRoute;
         weakSelf.currentStepIndex = 0;
+        [weakSelf.trackingEngine setActiveRoute:newRoute initialLocation:weakSelf.currentLocation];
         [weakSelf.mapView addOverlay:newRoute.polyline level:MKOverlayLevelAboveLabels];
 
         if (newRoute.steps.count > 0) {

@@ -14,6 +14,7 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Overlays/OSMTileOverlay.m \
                       NavigatoreOSM/Overlays/TrafficTileOverlay.m \
                       NavigatoreOSM/Services/RoutingService.m \
+                      NavigatoreOSM/Services/RouteTrackingEngine.m \
                       NavigatoreOSM/Services/FuelPriceService.m \
                       NavigatoreOSM/Services/VoiceGuidanceService.m \
                       NavigatoreOSM/Services/LocalizationManager.m \
@@ -23,9 +24,10 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Views/SpeedometerView.m \
                       NavigatoreOSM/Views/RouteSelectorView.m \
                       NavigatoreOSM/Views/QuickPOIShelfView.m \
-                      NavigatoreOSM/Views/POIResultsCardView.m
+                      NavigatoreOSM/Views/POIResultsCardView.m \
+                      NavigatoreOSM/Views/VehicleAnnotationView.m
 
-NavigatoreOSM_FRAMEWORKS = UIKit Foundation CoreGraphics CoreLocation MapKit AVFoundation
+NavigatoreOSM_FRAMEWORKS = UIKit Foundation CoreGraphics CoreLocation MapKit AVFoundation QuartzCore
 NavigatoreOSM_CFLAGS = -fobjc-arc -INavigatoreOSM -O2
 
 include $(THEOS_MAKE_PATH)/application.mk
