@@ -32,6 +32,8 @@
 @property (nonatomic, strong) CADisplayLink *displayLink;
 @property (nonatomic, assign) CFTimeInterval lastFrameTime;
 @property (nonatomic, assign) BOOL isTrackingVehicle;
+@property (nonatomic, assign) BOOL hasPerformedInitialZoom;
+@property (nonatomic, assign) BOOL isCruisingWithVehiclePuck;
 
 // UI HUD Moderna Waze / Google Maps
 @property (nonatomic, strong) ManeuverHUDView *maneuverHUD;
@@ -125,12 +127,12 @@
     self.trackingEngine.delegate = self;
     self.vehicleAnnotation = [[VehicleAnnotation alloc] init];
     self.isTrackingVehicle = YES;
+    self.hasPerformedInitialZoom = NO;
+    self.isCruisingWithVehiclePuck = NO;
 
     UIPanGestureRecognizer *mapPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapPan:)];
     mapPan.delegate = self;
     [self.mapView addGestureRecognizer:mapPan];
-
-    [self startDisplayLink];
 
     self.poiAnnotations = [NSMutableArray array];
 
@@ -411,13 +413,22 @@
 }
 
 - (void)applyCameraPerspectiveAnimated:(BOOL)animated {
-    CLLocationCoordinate2D center = (self.isNavigating && self.trackingEngine.hasActiveRoute)
-        ? self.trackingEngine.currentCoordinate
-        : (self.currentLocation ? self.currentLocation.coordinate : self.mapView.centerCoordinate);
+    CLLocationCoordinate2D center;
+    CLLocationDirection heading;
 
-    CLLocationDirection heading = (self.isNavigating && self.trackingEngine.hasActiveRoute)
-        ? self.trackingEngine.currentHeading
-        : self.currentHeading;
+    if (self.isNavigating && self.trackingEngine.hasActiveRoute && self.isCruisingWithVehiclePuck) {
+        center = self.trackingEngine.currentCoordinate;
+        heading = self.trackingEngine.currentHeading;
+    } else if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
+        center = self.currentLocation.coordinate;
+        heading = self.currentHeading;
+    } else if (self.mapView.userLocation.location && CLLocationCoordinate2DIsValid(self.mapView.userLocation.location.coordinate) && self.mapView.userLocation.location.coordinate.latitude != 0) {
+        center = self.mapView.userLocation.location.coordinate;
+        heading = self.currentHeading;
+    } else {
+        center = self.mapView.centerCoordinate;
+        heading = self.currentHeading;
+    }
 
     if (self.is3DMode) {
         // Modalità 3D Prospettica Cockpit (stile Waze/Google Maps)
@@ -431,7 +442,7 @@
                                                       fromEyeCoordinate:center
                                                             eyeAltitude:altitude];
         cam.pitch = 56.0; // Inclinazione tridimensionale 3D
-        cam.heading = heading;
+        cam.heading = (heading >= 0) ? heading : 0.0;
         [self.mapView setCamera:cam animated:animated];
     } else {
         // Modalità 2D Pianta Ortogonale
@@ -439,7 +450,7 @@
                                                       fromEyeCoordinate:center
                                                             eyeAltitude:1350.0];
         cam.pitch = 0.0; // Piatta a 0°
-        cam.heading = heading;
+        cam.heading = (heading >= 0) ? heading : 0.0;
         [self.mapView setCamera:cam animated:animated];
     }
 }
@@ -623,12 +634,19 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         [self.poiAnnotations removeAllObjects];
     }
 
+    self.isNavigating = NO;
+    [self stopDisplayLink];
+    self.isCruisingWithVehiclePuck = NO;
+    if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+        [self.mapView removeAnnotation:self.vehicleAnnotation];
+    }
+    self.mapView.showsUserLocation = YES;
+
     self.availableRoutes = nil;
     self.currentRoute = nil;
     self.currentStepIndex = 0;
     self.offRouteConsecutiveCount = 0;
     [self.trackingEngine clearActiveRoute];
-    self.mapView.showsUserLocation = YES;
 
     [self.maneuverHUD reset];
     [[VoiceGuidanceService sharedService] resetManeuverTracking];
@@ -827,14 +845,16 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
                                  duration:self.currentRoute.totalDuration
                             trafficStatus:self.currentRoute.trafficDescription];
 
-    // Attiva motore di tracciamento mezzeria e annotazione veicolo
+    // Attiva motore di tracciamento mezzeria
     [self.trackingEngine setActiveRoute:selectedRoute initialLocation:self.currentLocation];
-    if (![self.mapView.annotations containsObject:self.vehicleAnnotation]) {
-        [self.mapView addAnnotation:self.vehicleAnnotation];
+    self.isCruisingWithVehiclePuck = NO;
+    if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+        [self.mapView removeAnnotation:self.vehicleAnnotation];
     }
-    self.mapView.showsUserLocation = NO;
+    self.mapView.showsUserLocation = YES;
     self.isTrackingVehicle = YES;
 
+    [self startDisplayLink];
     [self applyCameraPerspectiveAnimated:YES];
 
     BOOL isIt = [[LocalizationManager sharedManager] isItalian];
@@ -929,6 +949,12 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
     // Se eravamo in navigazione attiva, azzeriamo HUD e mostriamo il selettore
     self.isNavigating = NO;
+    self.isCruisingWithVehiclePuck = NO;
+    if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+        [self.mapView removeAnnotation:self.vehicleAnnotation];
+    }
+    self.mapView.showsUserLocation = YES;
+    [self stopDisplayLink];
     self.maneuverHUD.hidden = YES;
     self.tripBar.hidden = YES;
 
@@ -1113,25 +1139,46 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         self.currentHeading = heading;
     }
 
+    // 1. Animazione dolce della cam in apertura verso la posizione del dispositivo (eseguita UNA SOLA VOLTA)
+    if (!self.hasPerformedInitialZoom && CLLocationCoordinate2DIsValid(location.coordinate) && location.coordinate.latitude != 0) {
+        self.hasPerformedInitialZoom = YES;
+        MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:location.coordinate
+                                                      fromEyeCoordinate:location.coordinate
+                                                            eyeAltitude:self.is3DMode ? 550.0 : 1200.0];
+        cam.pitch = self.is3DMode ? 56.0 : 0.0;
+        cam.heading = (heading >= 0) ? heading : 0.0;
+        [self.mapView setCamera:cam animated:YES];
+    }
+
     if (self.isNavigating && self.trackingEngine.hasActiveRoute) {
         // Invia il fix GPS al motore di tracciamento mezzeria:
         // Verifica la tolleranza (range ragionevole) e riconcilia il progresso longitudinale
         // senza spostare l'auto lateralmente per inseguire un GPS impreciso!
         [self.trackingEngine processGPSLocation:location heading:heading];
     } else {
-        // Guida libera (senza navigazione attiva)
-        [self.speedometer updateSpeed:location.speed];
-        if (![self.mapView.annotations containsObject:self.vehicleAnnotation]) {
-            [self.mapView addAnnotation:self.vehicleAnnotation];
-        }
-        [self.vehicleAnnotation updateCoordinate:location.coordinate heading:heading];
-        VehicleAnnotationView *vehView = (VehicleAnnotationView *)[self.mapView viewForAnnotation:self.vehicleAnnotation];
-        if (vehView) {
-            [vehView updateHeading:heading cameraHeading:self.mapView.camera.heading];
+        // Guida libera (senza itinerario scelto)
+        // Regola tassativa: compare SOLO la posizione effettiva ricevuta dal GPS (showsUserLocation = YES),
+        // MAI il puck del navigatore!
+        self.mapView.showsUserLocation = YES;
+        if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+            [self.mapView removeAnnotation:self.vehicleAnnotation];
         }
 
-        if (self.isTrackingVehicle && self.is3DMode) {
-            [self applyCameraPerspectiveAnimated:YES];
+        [self.speedometer updateSpeed:location.speed];
+
+        // In guida libera, se la telecamera sta inseguendo la posizione ed è a velocità di marcia,
+        // aggiorna la telecamera senza animazioni lente o a scatti (animated:NO)
+        if (self.isTrackingVehicle && self.hasPerformedInitialZoom && location.speed >= 1.2) {
+            double speed = location.speed;
+            double altitude = self.is3DMode ? (400.0 + MIN(speed * 3.2, 320.0)) : 1200.0;
+            MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:location.coordinate
+                                                          fromEyeCoordinate:location.coordinate
+                                                                eyeAltitude:altitude];
+            cam.pitch = self.is3DMode ? 56.0 : 0.0;
+            if (heading >= 0) {
+                cam.heading = heading;
+            }
+            [self.mapView setCamera:cam animated:NO];
         }
     }
 }
@@ -1150,56 +1197,82 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         // 1. Avanza lungo la polyline interpolando la velocità del GPS come gradiente
         [self.trackingEngine updateTickWithDeltaTime:dt];
 
-        CLLocationCoordinate2D vehicleCoord = self.trackingEngine.currentCoordinate;
-        CLLocationDirection vehicleHeading = self.trackingEngine.currentHeading;
         double speed = self.trackingEngine.smoothedSpeed;
+        BOOL confirmedOnRoute = self.trackingEngine.isConfirmedOnRoute;
 
-        // 2. Aggiorna tachimetro in modo fluido
-        [self.speedometer updateSpeed:speed];
-
-        // 3. Aggiorna annotazione veicolo con rotazione coerente
-        [self.vehicleAnnotation updateCoordinate:vehicleCoord heading:vehicleHeading];
-        VehicleAnnotationView *vehView = (VehicleAnnotationView *)[self.mapView viewForAnnotation:self.vehicleAnnotation];
-        if (vehView) {
-            [vehView updateHeading:vehicleHeading cameraHeading:self.mapView.camera.heading];
+        // 2. Regola fondamentale del singolo punto visibile:
+        // Il puck del navigatore compare SOLO durante la navigazione E a velocità di marcia non a singhiozzo
+        // (in sostituzione della posizione effettiva).
+        // Da fermi (velocità verosimilmente nulla con imprecisioni GPS) o fuori rotta,
+        // viene mostrata SOLO la posizione GPS effettiva ricevuta.
+        if (!self.isCruisingWithVehiclePuck) {
+            if (confirmedOnRoute && speed >= 1.4) {
+                self.isCruisingWithVehiclePuck = YES;
+                self.mapView.showsUserLocation = NO;
+                if (![self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+                    [self.mapView addAnnotation:self.vehicleAnnotation];
+                }
+            }
+        } else {
+            if (!confirmedOnRoute || speed < 0.8) {
+                self.isCruisingWithVehiclePuck = NO;
+                if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+                    [self.mapView removeAnnotation:self.vehicleAnnotation];
+                }
+                self.mapView.showsUserLocation = YES;
+            }
         }
 
-        // 4. Se la telecamera sta inseguendo il veicolo, muovila continuamente a 30 FPS senza animazioni a scatti
-        if (self.isTrackingVehicle) {
-            if (self.is3DMode) {
-                double altitude = 400.0 + (speed * 3.2);
-                altitude = MIN(altitude, 720.0);
+        // 3. Aggiorna tachimetro in modo fluido
+        [self.speedometer updateSpeed:speed];
 
-                // Offset prospettico: posiziona l'occhio 32m dietro al veicolo e guarda 48m avanti lungo la rotta
-                double rad = vehicleHeading * (M_PI / 180.0);
-                double dBehind = 32.0;
-                double dLookAhead = 48.0;
+        // 4. Se in crociera con puck attivo, aggiorna posizione, rotazione e insegui con telecamera 3D
+        if (self.isCruisingWithVehiclePuck) {
+            CLLocationCoordinate2D vehicleCoord = self.trackingEngine.currentCoordinate;
+            CLLocationDirection vehicleHeading = self.trackingEngine.currentHeading;
 
-                double cosLat = MAX(0.2, cos(vehicleCoord.latitude * (M_PI / 180.0)));
-                double latOffsetEye = -(dBehind * cos(rad)) / 111132.0;
-                double lonOffsetEye = -(dBehind * sin(rad)) / (111132.0 * cosLat);
+            [self.vehicleAnnotation updateCoordinate:vehicleCoord heading:vehicleHeading];
+            VehicleAnnotationView *vehView = (VehicleAnnotationView *)[self.mapView viewForAnnotation:self.vehicleAnnotation];
+            if (vehView) {
+                [vehView updateHeading:vehicleHeading cameraHeading:self.mapView.camera.heading];
+            }
 
-                double latOffsetLook = (dLookAhead * cos(rad)) / 111132.0;
-                double lonOffsetLook = (dLookAhead * sin(rad)) / (111132.0 * cosLat);
+            if (self.isTrackingVehicle) {
+                if (self.is3DMode) {
+                    double altitude = 400.0 + (speed * 3.2);
+                    altitude = MIN(altitude, 720.0);
 
-                CLLocationCoordinate2D eyeCoord = CLLocationCoordinate2DMake(vehicleCoord.latitude + latOffsetEye,
-                                                                             vehicleCoord.longitude + lonOffsetEye);
-                CLLocationCoordinate2D lookCoord = CLLocationCoordinate2DMake(vehicleCoord.latitude + latOffsetLook,
-                                                                              vehicleCoord.longitude + lonOffsetLook);
+                    // Offset prospettico: posiziona l'occhio 32m dietro al veicolo e guarda 48m avanti lungo la rotta
+                    double rad = vehicleHeading * (M_PI / 180.0);
+                    double dBehind = 32.0;
+                    double dLookAhead = 48.0;
 
-                MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:lookCoord
-                                                              fromEyeCoordinate:eyeCoord
-                                                                    eyeAltitude:altitude];
-                cam.pitch = 56.0;
-                cam.heading = vehicleHeading;
-                [self.mapView setCamera:cam animated:NO];
-            } else {
-                MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:vehicleCoord
-                                                              fromEyeCoordinate:vehicleCoord
-                                                                    eyeAltitude:1350.0];
-                cam.pitch = 0.0;
-                cam.heading = vehicleHeading;
-                [self.mapView setCamera:cam animated:NO];
+                    double cosLat = MAX(0.2, cos(vehicleCoord.latitude * (M_PI / 180.0)));
+                    double latOffsetEye = -(dBehind * cos(rad)) / 111132.0;
+                    double lonOffsetEye = -(dBehind * sin(rad)) / (111132.0 * cosLat);
+
+                    double latOffsetLook = (dLookAhead * cos(rad)) / 111132.0;
+                    double lonOffsetLook = (dLookAhead * sin(rad)) / (111132.0 * cosLat);
+
+                    CLLocationCoordinate2D eyeCoord = CLLocationCoordinate2DMake(vehicleCoord.latitude + latOffsetEye,
+                                                                                 vehicleCoord.longitude + lonOffsetEye);
+                    CLLocationCoordinate2D lookCoord = CLLocationCoordinate2DMake(vehicleCoord.latitude + latOffsetLook,
+                                                                                  vehicleCoord.longitude + lonOffsetLook);
+
+                    MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:lookCoord
+                                                                  fromEyeCoordinate:eyeCoord
+                                                                        eyeAltitude:altitude];
+                    cam.pitch = 56.0;
+                    cam.heading = vehicleHeading;
+                    [self.mapView setCamera:cam animated:NO];
+                } else {
+                    MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:vehicleCoord
+                                                                  fromEyeCoordinate:vehicleCoord
+                                                                        eyeAltitude:1350.0];
+                    cam.pitch = 0.0;
+                    cam.heading = vehicleHeading;
+                    [self.mapView setCamera:cam animated:NO];
+                }
             }
         }
 
@@ -1249,6 +1322,11 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 }
 
 - (void)routeTrackingEngineDidDetectOffRoute:(RouteTrackingEngine *)engine atLocation:(CLLocation *)location {
+    self.isCruisingWithVehiclePuck = NO;
+    if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
+        [self.mapView removeAnnotation:self.vehicleAnnotation];
+    }
+    self.mapView.showsUserLocation = YES;
     [self triggerAutoReroute];
 }
 
