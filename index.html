@@ -491,6 +491,111 @@
             text-decoration: underline;
         }
 
+        /* Carousel Styles */
+        .carousel-container {
+            position: relative;
+            max-width: 860px;
+            margin: 0 auto;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+        }
+        .carousel-track {
+            display: flex;
+            transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+            width: 100%;
+        }
+        .carousel-slide {
+            min-width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+        }
+        .carousel-slide img {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            object-fit: contain;
+            background: #0d1117;
+            display: block;
+        }
+        .carousel-caption {
+            padding: 16px 22px;
+            background: var(--surface-elevated);
+            border-top: 1px solid var(--border);
+        }
+        .carousel-caption h4 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+        }
+        .carousel-caption p {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin: 0;
+        }
+        .carousel-btn {
+            position: absolute;
+            top: 42%;
+            transform: translateY(-50%);
+            background: rgba(18, 24, 32, 0.82);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+        .carousel-btn:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            transform: translateY(-50%) scale(1.1);
+        }
+        .carousel-btn.prev {
+            left: 14px;
+        }
+        .carousel-btn.next {
+            right: 14px;
+        }
+        .carousel-dots {
+            position: absolute;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+            padding: 6px 12px;
+            background: rgba(0, 0, 0, 0.55);
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+        }
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.45);
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+        .dot.active {
+            background: var(--accent);
+            width: 24px;
+            border-radius: 6px;
+        }
+
         @media (max-width: 600px) {
             .hero h1 {
                 font-size: 28px;
@@ -507,6 +612,14 @@
                 width: auto;
                 padding: 8px 16px;
                 font-size: 13px;
+            }
+            .carousel-btn {
+                width: 36px;
+                height: 36px;
+                font-size: 14px;
+            }
+            .carousel-dots {
+                bottom: 110px;
             }
         }
     </style>
@@ -552,32 +665,52 @@
             </div>
         </header>
 
-        <!-- SCREENSHOT SHOWCASE -->
+        <!-- SCREENSHOT SLIDESHOW / CAROUSEL -->
         <section style="margin-bottom: 40px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
                 <h2 style="font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-                    <span>📸</span> <span>Real iPad Mini 1 Captures (iOS 9.3.5)</span>
+                    <span>📸</span> <span data-i18n="slideshow_title">Real iPad Mini 1 Screenshots (iOS 9.3.5)</span>
                 </h2>
-                <span style="font-size: 13px; color: var(--accent); font-weight: 600;">60 FPS Apple A5</span>
+                <span class="badge badge-green" style="font-size: 12px; font-weight: 700;">60 FPS • Apple A5</span>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
-                <div style="border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
-                    <img src="screenshots/screenshot1.png" alt="NavigatorOSM 3D Cockpit View" style="width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover;" />
-                    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">
-                        🏎️ 3D Cockpit, Speedometer & Quick POI Shelf
+
+            <div class="carousel-container" id="carousel">
+                <div class="carousel-track" id="carouselTrack">
+                    <!-- Slide 1 -->
+                    <div class="carousel-slide">
+                        <img src="screenshots/screenshot1.png" alt="NavigatorOSM 3D Cockpit View with HUD and POI Shelf" />
+                        <div class="carousel-caption">
+                            <h4>🏎️ Waze-Style 3D Cockpit, Speedometer & Quick POI Shelf</h4>
+                            <p>Real-time turn-by-turn navigation, digital GPS speedometer, and 1-tap POI shelf (Petrol, Parking, Coffee, Restaurants).</p>
+                        </div>
+                    </div>
+                    <!-- Slide 2 -->
+                    <div class="carousel-slide">
+                        <img src="screenshots/screenshot2.png" alt="NavigatorOSM 3D Extruded Buildings and Flyover Architecture" />
+                        <div class="carousel-caption">
+                            <h4>🏙️ 3D Extruded Buildings & Flyover Architecture</h4>
+                            <p>Hardware-accelerated MapKit OpenGL ES engine rendering full city architecture smoothly on Apple A5 silicon under 25 MB RAM.</p>
+                        </div>
+                    </div>
+                    <!-- Slide 3 -->
+                    <div class="carousel-slide">
+                        <img src="screenshots/screenshot3.png" alt="NavigatorOSM High-Density City Navigation in London" />
+                        <div class="carousel-caption">
+                            <h4>🇬🇧 High-Density City Navigation & Landmarks</h4>
+                            <p>Turn maneuver HUD with live distance countdown, dynamic speed limits, and clear road corridors across complex urban centers.</p>
+                        </div>
                     </div>
                 </div>
-                <div style="border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
-                    <img src="screenshots/screenshot2.png" alt="NavigatorOSM 3D Buildings & Flyover" style="width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover;" />
-                    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">
-                        🏙️ 3D Extruded Buildings & Flyover Architecture
-                    </div>
-                </div>
-                <div style="border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
-                    <img src="screenshots/screenshot3.png" alt="NavigatorOSM London Perspective" style="width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover;" />
-                    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">
-                        🇬🇧 High-Density City Navigation & Landmarks
-                    </div>
+
+                <!-- Navigation Arrows -->
+                <button class="carousel-btn prev" id="prevSlide" aria-label="Previous Slide">❮</button>
+                <button class="carousel-btn next" id="nextSlide" aria-label="Next Slide">❯</button>
+
+                <!-- Indicator Dots -->
+                <div class="carousel-dots" id="carouselDots">
+                    <span class="dot active" onclick="jumpToSlide(0)"></span>
+                    <span class="dot" onclick="jumpToSlide(1)"></span>
+                    <span class="dot" onclick="jumpToSlide(2)"></span>
                 </div>
             </div>
         </section>
@@ -731,8 +864,9 @@
                 btn_add_cydia: "Add to Cydia (from iPad)",
                 btn_releases: "GitHub Releases (.ipa / .apk)",
                 btn_github: "View Source Code",
+                slideshow_title: "Real iPad Mini 1 Screenshots (iOS 9.3.5)",
                 mission_title: "Combating E-Waste by Engineering Purpose",
-                mission_desc: "Millions of iPad Mini 1 and iPad 2 tablets sit unused in drawers simply because modern web browsers and bloatware exceed their 512 MB RAM. By writing clean, hardware-accelerated 32-bit native code, NavigatoreOSM uses under 25 MB of RAM—giving your legacy device an indefinite second life as a dedicated, permanently mounted vehicle navigation console.",
+                mission_desc: "Millions of iPad Mini 1 and iPad 2 tablets sit unused in drawers simply because modern web browsers and bloatware exceed their 512 MB RAM. By writing clean, hardware-accelerated 32-bit native code, NavigatorOSM uses under 25 MB of RAM—giving your legacy device an indefinite second life as a dedicated, permanently mounted vehicle navigation console.",
                 feat_perf_title: "Native 60 FPS & <25 MB RAM",
                 feat_perf_desc: "Pure Objective-C and MapKit bypass WebKit entirely. No crashes, no memory leaks, and buttery-smooth 3D perspective camera panning on Apple A5 silicon.",
                 feat_maps_title: "Tri-Mode Map Cartography",
@@ -769,8 +903,9 @@
                 btn_add_cydia: "Aggiungi a Cydia (da iPad)",
                 btn_releases: "Release GitHub (.ipa / .apk)",
                 btn_github: "Codice Sorgente su GitHub",
+                slideshow_title: "Screenshot Reali su iPad Mini 1 (iOS 9.3.5)",
                 mission_title: "Combattere l'E-Waste Restituendo Utilità",
-                mission_desc: "Milioni di iPad Mini 1 e iPad 2 giacciono inutilizzati nei cassetti solo perché le app moderne e il browser superano i 512 MB di RAM. Grazie al codice nativo a 32-bit super ottimizzato, NavigatoreOSM consuma meno di 25 MB di RAM, trasformando il tablet in una stazione di navigazione fissa sempre reattiva.",
+                mission_desc: "Milioni di iPad Mini 1 e iPad 2 giacciono inutilizzati nei cassetti solo perché le app moderne e il browser superano i 512 MB di RAM. Grazie al codice nativo a 32-bit super ottimizzato, NavigatorOSM consuma meno di 25 MB di RAM, trasformando il tablet in una stazione di navigazione fissa sempre reattiva.",
                 feat_perf_title: "Nativo 60 FPS & <25 MB di RAM",
                 feat_perf_desc: "Objective-C e MapKit puri escludono totalmente WebKit. Niente crash per memoria esaurita e rotazione 3D della mappa fluida a 60 FPS stabili.",
                 feat_maps_title: "Cartografia Tri-Modale",
@@ -830,6 +965,85 @@
                 }, 2000);
             });
         }
+
+        /* Carousel Slideshow Controller */
+        let currentSlide = 0;
+        const totalSlides = 3;
+        let slideInterval = null;
+
+        function updateSlide() {
+            const track = document.getElementById('carouselTrack');
+            if (track) {
+                track.style.transform = 'translateX(-' + (currentSlide * 100) + '%)';
+            }
+            const dots = document.querySelectorAll('.carousel-dots .dot');
+            dots.forEach((dot, idx) => {
+                dot.classList.toggle('active', idx === currentSlide);
+            });
+        }
+
+        function nextSlide() {
+            currentSlide = (currentSlide + 1) % totalSlides;
+            updateSlide();
+        }
+
+        function prevSlide() {
+            currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
+            updateSlide();
+        }
+
+        function jumpToSlide(idx) {
+            currentSlide = idx;
+            updateSlide();
+            resetInterval();
+        }
+
+        function startAutoSlide() {
+            if (!slideInterval) {
+                slideInterval = setInterval(nextSlide, 4500);
+            }
+        }
+
+        function stopAutoSlide() {
+            if (slideInterval) {
+                clearInterval(slideInterval);
+                slideInterval = null;
+            }
+        }
+
+        function resetInterval() {
+            stopAutoSlide();
+            startAutoSlide();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const prev = document.getElementById('prevSlide');
+            const next = document.getElementById('nextSlide');
+            const container = document.getElementById('carousel');
+            if (prev) prev.addEventListener('click', () => { prevSlide(); resetInterval(); });
+            if (next) next.addEventListener('click', () => { nextSlide(); resetInterval(); });
+            if (container) {
+                container.addEventListener('mouseenter', stopAutoSlide);
+                container.addEventListener('mouseleave', startAutoSlide);
+
+                // Touch swipe support for iPad & mobile
+                let touchStartX = 0;
+                container.addEventListener('touchstart', e => {
+                    touchStartX = e.changedTouches[0].screenX;
+                    stopAutoSlide();
+                }, { passive: true });
+                container.addEventListener('touchend', e => {
+                    let touchEndX = e.changedTouches[0].screenX;
+                    if (touchStartX - touchEndX > 45) {
+                        nextSlide();
+                    } else if (touchEndX - touchStartX > 45) {
+                        prevSlide();
+                    }
+                    startAutoSlide();
+                }, { passive: true });
+            }
+            startAutoSlide();
+        });
     </script>
 </body>
 </html>
