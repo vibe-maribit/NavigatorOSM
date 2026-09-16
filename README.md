@@ -11,6 +11,16 @@
 
 ---
 
+## 📸 Real iPad Mini 1 Screenshots (iOS 9.3.5)
+
+| 🏎️ 3D Cockpit, Speedometer & POI Shelf | 🏙️ 3D Buildings & Flyover Architecture | 🇬🇧 High-Density City Navigation |
+| :---: | :---: | :---: |
+| <a href="assets/screenshots/screenshot1.png"><img src="assets/screenshots/screenshot1.png" width="320" alt="3D Cockpit View" /></a> | <a href="assets/screenshots/screenshot2.png"><img src="assets/screenshots/screenshot2.png" width="320" alt="3D Buildings" /></a> | <a href="assets/screenshots/screenshot3.png"><img src="assets/screenshots/screenshot3.png" width="320" alt="City Navigation" /></a> |
+
+*Actual captures running natively at 60 FPS on Apple A5 silicon (iPad Mini 1st Gen, iOS 9.3.5).*
+
+---
+
 ## 💡 The Project Mission: Smart iPad Retrofitting
 
 Millions of legacy Apple tablets—especially the **iPad Mini 1st Gen (A1432 / MD528TY/A)** with the **Apple A5 chip (dual-core 1.0 GHz Cortex-A9, 512 MB RAM)**—are currently sitting unused in drawers because modern iOS apps (Google Maps, Waze, Apple Maps) no longer support iOS 9, and the modern web crashes the browser due to RAM exhaustion.

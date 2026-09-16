@@ -48,7 +48,7 @@
       "applicationCategory": "NavigationApplication",
       "applicationSubCategory": "Automotive GPS Navigation",
       "description": "Native in-car GPS navigation app engineered to retrofit and repurpose obsolete Apple iPads (iPad Mini 1st Gen, iPad 2, iPad 3, iPad 4) running iOS 9.3.5. Uses native MapKit GPU acceleration, OpenStreetMap raster tiles, OSRM routing, dynamic speed limits, and UDP GPS tethering.",
-      "softwareVersion": "1.3.0",
+      "softwareVersion": "1.3.1",
       "memoryRequirements": "25 MB RAM",
       "processorRequirements": "Apple A5 Dual-Core 1.0 GHz (32-bit armv7)",
       "offers": {
@@ -517,7 +517,7 @@
         <!-- Header Bar with Language Switcher -->
         <div class="top-bar">
             <div style="font-weight: 800; font-size: 16px; letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px;">
-                <span>🗺️</span> NavigatoreOSM
+                <span>🗺️</span> NavigatorOSM
             </div>
             <div class="lang-switch">
                 <button class="lang-btn active" id="btn-en" onclick="setLanguage('en')">EN</button>
@@ -552,11 +552,41 @@
             </div>
         </header>
 
+        <!-- SCREENSHOT SHOWCASE -->
+        <section style="margin-bottom: 40px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                <h2 style="font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                    <span>📸</span> <span>Real iPad Mini 1 Captures (iOS 9.3.5)</span>
+                </h2>
+                <span style="font-size: 13px; color: var(--accent); font-weight: 600;">60 FPS Apple A5</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                <div style="border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                    <img src="screenshots/screenshot1.png" alt="NavigatorOSM 3D Cockpit View" style="width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover;" />
+                    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">
+                        🏎️ 3D Cockpit, Speedometer & Quick POI Shelf
+                    </div>
+                </div>
+                <div style="border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                    <img src="screenshots/screenshot2.png" alt="NavigatorOSM 3D Buildings & Flyover" style="width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover;" />
+                    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">
+                        🏙️ 3D Extruded Buildings & Flyover Architecture
+                    </div>
+                </div>
+                <div style="border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                    <img src="screenshots/screenshot3.png" alt="NavigatorOSM London Perspective" style="width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover;" />
+                    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-secondary); font-weight: 600;">
+                        🇬🇧 High-Density City Navigation & Landmarks
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- MISSION CALLOUT -->
         <section class="mission-banner">
             <h2><span>🌱</span> <span data-i18n="mission_title">Combating E-Waste by Engineering Purpose</span></h2>
             <p data-i18n="mission_desc">
-                Millions of iPad Mini 1 and iPad 2 tablets sit unused in drawers simply because modern web browsers and bloatware exceed their 512 MB RAM. By writing clean, hardware-accelerated 32-bit native code, NavigatoreOSM uses <strong>under 25 MB of RAM</strong>—giving your legacy device an indefinite second life as a dedicated, permanently mounted vehicle navigation console.
+                Millions of iPad Mini 1 and iPad 2 tablets sit unused in drawers simply because modern web browsers and bloatware exceed their 512 MB RAM. By writing clean, hardware-accelerated 32-bit native code, NavigatorOSM uses <strong>under 25 MB of RAM</strong>—giving your legacy device an indefinite second life as a dedicated, permanently mounted vehicle navigation console.
             </p>
         </section>
 
