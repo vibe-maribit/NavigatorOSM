@@ -645,6 +645,9 @@
                 <span class="badge badge-green">⚡ Pure Native 60 FPS</span>
                 <span class="badge badge-orange">🚗 iOS 9.3.5 / A5</span>
                 <span class="badge">🆓 100% Free & Open Source</span>
+                <a href="https://github.com/vibe-maribit/NavigatorOSM/releases" style="text-decoration: none;">
+                    <span class="badge" style="background: rgba(35, 134, 54, 0.2); border-color: rgba(35, 134, 54, 0.4); color: #3fb950; font-weight: 700;">📥 <span id="heroDownloads">15</span> Downloads</span>
+                </a>
             </div>
 
             <h1 data-i18n="hero_title">Give Obsolete iPads a Second Life in Your Car</h1>
@@ -817,7 +820,12 @@
 
         <!-- DIRECT DOWNLOADS -->
         <section class="downloads-card">
-            <h2 data-i18n="downloads_title">📦 Ready-to-Use Binary Packages</h2>
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                <h2 data-i18n="downloads_title" style="margin-bottom: 0;">📦 Ready-to-Use Binary Packages</h2>
+                <a href="https://github.com/vibe-maribit/NavigatorOSM/releases" target="_blank" rel="noopener">
+                    <img src="https://img.shields.io/github/downloads/vibe-maribit/NavigatorOSM/total?style=for-the-badge&color=238636&logo=github" alt="Total GitHub Downloads" style="height: 28px; border-radius: 6px;" />
+                </a>
+            </div>
             
             <div class="download-row">
                 <div class="download-meta">
@@ -829,7 +837,7 @@
 
             <div class="download-row">
                 <div class="download-meta">
-                    <h4>com.maribit.navigatoreosm.deb</h4>
+                    <h4>com.nicola.navigatoreosm.deb</h4>
                     <p data-i18n="dl_deb_desc">Debian Cydia archive package for manual installation via Filza or DPKG.</p>
                 </div>
                 <a class="btn btn-secondary" href="https://github.com/vibe-maribit/NavigatorOSM/releases">Download DEB</a>
@@ -847,7 +855,7 @@
         <!-- FOOTER -->
         <footer>
             <p>
-                <strong>NavigatoreOSM</strong> is free software licensed under the <a href="https://github.com/vibe-maribit/NavigatorOSM/blob/develop/LICENSE">MIT License</a>.<br>
+                <strong>NavigatorOSM</strong> is free software licensed under the <a href="https://github.com/vibe-maribit/NavigatorOSM/blob/develop/LICENSE">MIT License</a>.<br>
                 Map Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>. Night tiles © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>. Routing powered by <a href="http://project-osrm.org/" target="_blank" rel="noopener">Project OSRM</a>.<br>
                 Engineered with pride to combat e-waste and keep legendary Apple hardware alive.
             </p>
@@ -1044,6 +1052,26 @@
             }
             startAutoSlide();
         });
+
+        // Live Total Downloads Counter from GitHub Releases API
+        (function fetchDownloads() {
+            fetch('https://api.github.com/repos/vibe-maribit/NavigatorOSM/releases')
+                .then(function(res) { return res.ok ? res.json() : []; })
+                .then(function(releases) {
+                    var total = 0;
+                    for (var i = 0; i < releases.length; i++) {
+                        var assets = releases[i].assets || [];
+                        for (var j = 0; j < assets.length; j++) {
+                            total += (assets[j].download_count || 0);
+                        }
+                    }
+                    if (total > 0) {
+                        var el = document.getElementById('heroDownloads');
+                        if (el) el.textContent = total;
+                    }
+                })
+                .catch(function() {});
+        })();
     </script>
 </body>
 </html>
