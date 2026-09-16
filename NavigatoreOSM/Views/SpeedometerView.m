@@ -1,4 +1,5 @@
 #import "SpeedometerView.h"
+#import "../Services/LocalizationManager.h"
 
 @interface SpeedometerView ()
 @property (nonatomic, strong) UIView *circleContainer;
@@ -48,7 +49,7 @@
         _unitLabel.textAlignment = NSTextAlignmentCenter;
         _unitLabel.textColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.5 alpha:1.0];
         _unitLabel.font = [UIFont boldSystemFontOfSize:11.0];
-        _unitLabel.text = @"KM/H";
+        _unitLabel.text = NLString(@"SPEED_KMH", @"KM/H");
         [_circleContainer addSubview:_unitLabel];
 
         // Segnale Stradale del Limite di Velocità (Cerchio Bianco con Bordo Rosso)
@@ -132,14 +133,14 @@
         self.circleContainer.layer.borderWidth = 3.5;
         self.speedLabel.textColor = [UIColor yellowColor];
         self.unitLabel.textColor = [UIColor whiteColor];
-        self.unitLabel.text = @"ECCESSO!";
+        self.unitLabel.text = NLString(@"OVERSPEED", @"ECCESSO!");
     } else {
         self.circleContainer.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.92];
         self.circleContainer.layer.borderColor = [[UIColor colorWithRed:0.2 green:0.8 blue:0.5 alpha:0.8] CGColor];
         self.circleContainer.layer.borderWidth = 2.5;
         self.speedLabel.textColor = [UIColor whiteColor];
         self.unitLabel.textColor = [UIColor colorWithRed:0.2 green:0.85 blue:0.5 alpha:1.0];
-        self.unitLabel.text = @"KM/H";
+        self.unitLabel.text = NLString(@"SPEED_KMH", @"KM/H");
     }
 }
 

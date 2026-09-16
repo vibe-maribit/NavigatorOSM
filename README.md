@@ -1,4 +1,4 @@
-# 🗺️ NavigatoreOSM: In-Car GPS Navigator for Legacy iPads (iOS 9.3.5 / 32-bit armv7)
+# 🗺️ NavigatorOSM: In-Car GPS Navigator for Legacy iPads (iOS 9.3.5 / 32-bit armv7)
 
 [![Release](https://img.shields.io/github/v/release/vibe-maribit/NavigatorOSM?style=for-the-badge&color=blue)](https://github.com/vibe-maribit/NavigatorOSM/releases)
 [![Target](https://img.shields.io/badge/Target-iOS%209.3.5%20%7C%2032--bit%20armv7-green?style=for-the-badge&logo=apple)](https://github.com/vibe-maribit/NavigatorOSM)
@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-brightgreen?style=for-the-badge)](LICENSE)
 
 > **Don't let your obsolete iPad become electronic waste.**  
-> **NavigatoreOSM** gives a second life to legacy iPad tablets (iPad Mini 1, iPad 2, iPad 3, iPad 4) running iOS 9.3.5, repurposing them into dedicated, fluid, high-performance in-car GPS navigators inspired by **Google Maps & Waze**.
+> **NavigatorOSM** gives a second life to legacy iPad tablets (iPad Mini 1, iPad 2, iPad 3, iPad 4) running iOS 9.3.5, repurposing them into dedicated, fluid, high-performance in-car GPS navigators inspired by **Google Maps & Waze**.
 
 ---
 
@@ -15,8 +15,8 @@
 
 Millions of legacy Apple tablets—especially the **iPad Mini 1st Gen (A1432 / MD528TY/A)** with the **Apple A5 chip (dual-core 1.0 GHz Cortex-A9, 512 MB RAM)**—are currently sitting unused in drawers because modern iOS apps (Google Maps, Waze, Apple Maps) no longer support iOS 9, and the modern web crashes the browser due to RAM exhaustion.
 
-**NavigatoreOSM solves this with a 100% Pure Native Objective-C Architecture:**
-- **Zero WebKit / Zero Browser**: Unlike web wrappers that crash due to iOS 9 `jetsam` memory limits, NavigatoreOSM consumes **less than 25 MB of RAM** (< 5% of total system memory).
+**NavigatorOSM solves this with a 100% Pure Native Objective-C Architecture:**
+- **Zero WebKit / Zero Browser**: Unlike web wrappers that crash due to iOS 9 `jetsam` memory limits, NavigatorOSM consumes **less than 25 MB of RAM** (< 5% of total system memory).
 - **60 FPS Hardware-Accelerated Rendering**: Leverages the Apple PowerVR SGX543MP2 GPU directly through MapKit and OpenGL ES pipelines for butter-smooth zooming, panning, and tilting.
 - **Zero API Keys Required**: Seamlessly runs on open, free community infrastructure (OpenStreetMap standard raster tiles, Esri Dark Canvas for night mode, Apple Hybrid Satellite photography, and OSRM routing).
 - **Wi-Fi-Only iPad GPS Support**: Includes a companion Android app and UDP/TCP network GPS receiver to broadcast high-accuracy satellite coordinates from any smartphone hotspot.
@@ -38,6 +38,7 @@ Millions of legacy Apple tablets—especially the **iPad Mini 1st Gen (A1432 / M
 | ⛽ **Quick POI Shelf & Custom Search** | 1-touch search for Gas Stations (`⛽`), Parking (`🅿️`), Coffee/Food (`☕`), and Restaurants (`🍴`) with interactive map pins and distance cards. |
 | 📱 **Android GPS Tether Companion** | Broadcasts smartphone GPS coordinates over Wi-Fi hotspot to Wi-Fi-only iPads via UDP broadcast (`:8888`) or TCP client. |
 | 📲 **Cydia OTA Wireless Updates** | Official Cydia repository hosted on GitHub Pages for 1-tap wireless installations and updates over Wi-Fi. |
+| 🌐 **Multi-Language (EN / IT)** | Full bilingual support (English & Italian) with automatic system language detection and manual toggle in Settings. Clean architecture designed for easy community translations. |
 | 🔌 **Always-On Driving Display** | `UIApplication.idleTimerDisabled = YES` prevents the screen from sleeping while driving. |
 
 ---
@@ -83,7 +84,7 @@ flowchart TD
 
 ## 🚀 Installation Guide
 
-You can install **NavigatoreOSM** on your iPad Mini 1 using either of the following methods:
+You can install **NavigatorOSM** on your iPad Mini 1 using either of the following methods:
 
 ### Method A: Wireless Over-The-Air via Cydia (Recommended)
 1. Ensure your iPad Mini 1 is jailbroken on iOS 9.3.5 (via **kok3shi9** or **Phoenix**).
@@ -94,7 +95,7 @@ You can install **NavigatoreOSM** on your iPad Mini 1 using either of the follow
    https://vibe-maribit.github.io/NavigatorOSM/
    ```
 5. Tap **Add Source**.
-6. Search for **NavigatoreOSM** and tap **Install**.
+6. Search for **NavigatorOSM** and tap **Install**.
    *(Updates are automatically notified and installed wirelessly through Cydia!)*
 
 ### Method B: USB 1-Command Fast Install (Linux / macOS)
@@ -102,10 +103,10 @@ If your iPad has **AppSync Unified** installed from Cydia:
 1. Connect your iPad Mini to your computer via USB Lightning cable.
 2. Clone this repository and run:
    ```bash
-   cd NavigatoreOSM
+   cd NavigatorOSM
    ./install-usb.sh
    ```
-3. The script detects your device via `libimobiledevice` and flashes `NavigatoreOSM.ipa` in under 5 seconds!
+3. The script detects your device via `libimobiledevice` and flashes `NavigatorOSM.ipa` in under 5 seconds!
 
 ### Method C: Companion Android GPS Tether App
 For Wi-Fi-only iPads lacking internal GPS hardware:
@@ -113,7 +114,7 @@ For Wi-Fi-only iPads lacking internal GPS hardware:
 2. Install it on your Android smartphone.
 3. Turn on Wi-Fi Hotspot on your phone and connect the iPad to it.
 4. Launch **GPS Tether** on Android and tap **Start Tethering**.
-5. Open **NavigatoreOSM** on the iPad: the speedometer and map will immediately lock onto your smartphone's satellite fix!
+5. Open **NavigatorOSM** on the iPad: the speedometer and map will immediately lock onto your smartphone's satellite fix!
 
 ---
 

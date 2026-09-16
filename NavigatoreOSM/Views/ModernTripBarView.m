@@ -1,4 +1,5 @@
 #import "ModernTripBarView.h"
+#import "../Services/LocalizationManager.h"
 
 @interface ModernTripBarView ()
 
@@ -34,14 +35,14 @@
         _statsLabel = [[UILabel alloc] initWithFrame:CGRectMake(142, 12, frame.size.width - 215, 28)];
         _statsLabel.font = [UIFont boldSystemFontOfSize:18.0];
         _statsLabel.textColor = [UIColor whiteColor];
-        _statsLabel.text = @"In attesa di rotta...";
+        _statsLabel.text = NLString(@"WAITING_GPS", @"In attesa di rotta...");
         [self addSubview:_statsLabel];
 
         // Badge traffico sotto
         _trafficLabel = [[UILabel alloc] initWithFrame:CGRectMake(22, 40, frame.size.width - 95, 20)];
         _trafficLabel.font = [UIFont systemFontOfSize:13.0];
         _trafficLabel.textColor = [UIColor colorWithWhite:0.8 alpha:1.0];
-        _trafficLabel.text = @"🟢 Traffico regolare";
+        _trafficLabel.text = NLString(@"TRAFFIC_SMOOTH", @"🟢 Traffico regolare");
         [self addSubview:_trafficLabel];
 
         // Pulsante circolare rosso Termina / Esci a destra
@@ -87,7 +88,7 @@
     self.etaLabel.text = [fmt stringFromDate:arrival];
 
     self.statsLabel.text = [NSString stringWithFormat:@"%@ • %@", timeStr, distStr];
-    self.trafficLabel.text = traffic ?: @"🟢 Traffico regolare";
+    self.trafficLabel.text = traffic ?: NLString(@"TRAFFIC_SMOOTH", @"🟢 Traffico regolare");
 }
 
 @end

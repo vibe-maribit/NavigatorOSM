@@ -12,6 +12,7 @@
 #import "../Views/RouteSelectorView.h"
 #import "../Views/QuickPOIShelfView.h"
 #import "../Views/POIResultsCardView.h"
+#import "../Services/LocalizationManager.h"
 
 @interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate>
 
@@ -113,8 +114,13 @@
     // 7. Costruisci l'interfaccia grafica moderna in stile Google Maps / Waze
     [self setupModernUI];
 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleLanguageChanged:)
+                                                 name:kAppLanguagePreferenceChangedNotification
+                                               object:nil];
+
     // Messaggio vocale di avvio
-    [[VoiceGuidanceService sharedService] speak:@"Navigatore pronto con visuale 3D prospettica."];
+    [[VoiceGuidanceService sharedService] speak:NLString(@"READY_3D", @"Navigatore pronto con visuale 3D prospettica.")];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -141,7 +147,7 @@
     self.topSearchPill.layer.shadowOpacity = 0.5;
     self.topSearchPill.layer.shadowRadius = 8.0;
     self.topSearchPill.layer.shadowOffset = CGSizeMake(0, 3);
-    [self.topSearchPill setTitle:@"  🔍 Cerca destinazione o indirizzo..." forState:UIControlStateNormal];
+    [self.topSearchPill setTitle:NLString(@"SEARCH_PLACEHOLDER", @"  🔍 Cerca destinazione o indirizzo...") forState:UIControlStateNormal];
     [self.topSearchPill setTitleColor:[UIColor colorWithWhite:0.9 alpha:1.0] forState:UIControlStateNormal];
     self.topSearchPill.titleLabel.font = [UIFont systemFontOfSize:15.0];
     self.topSearchPill.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
@@ -182,7 +188,7 @@
     self.gpsSourceLabel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin;
     self.gpsSourceLabel.font = [UIFont boldSystemFontOfSize:11.0];
     self.gpsSourceLabel.textColor = [UIColor colorWithWhite:0.25 alpha:0.85];
-    self.gpsSourceLabel.text = @"GPS: In attesa di segnale...";
+    self.gpsSourceLabel.text = NLString(@"WAITING_GPS", @"GPS: In attesa di segnale...");
     [self.view addSubview:self.gpsSourceLabel];
 
     // 7. TOOLBAR VERTICALE COLLAPSIBLE a destra
@@ -200,6 +206,14 @@
     self.poiResultsCard.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     self.poiResultsCard.delegate = self;
     [self.view addSubview:self.poiResultsCard];
+}
+
+- (void)handleLanguageChanged:(NSNotification *)note {
+    [self.topSearchPill setTitle:NLString(@"SEARCH_PLACEHOLDER", @"  🔍 Cerca destinazione o indirizzo...") forState:UIControlStateNormal];
+    if (self.currentLocation == nil) {
+        self.gpsSourceLabel.text = NLString(@"WAITING_GPS", @"GPS: In attesa di segnale...");
+    }
+    [self.maneuverHUD reset];
 }
 
 #pragma mark - Toolbar Verticale Collapsible (◀ / ▶)
@@ -384,11 +398,11 @@
     if (self.trafficOverlay.isEnabled) {
         [self.mapView addOverlay:self.trafficOverlay level:MKOverlayLevelAboveRoads];
         [self.trafficButton setTitle:@"🚦" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:@"Traffico attivato."];
+        [[VoiceGuidanceService sharedService] speak:NLString(@"TRAFFIC_ON", @"Traffico attivato.")];
     } else {
         [self.mapView removeOverlay:self.trafficOverlay];
         [self.trafficButton setTitle:@"⚪" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:@"Traffico disattivato."];
+        [[VoiceGuidanceService sharedService] speak:NLString(@"TRAFFIC_OFF", @"Traffico disattivato.")];
     }
 }
 
@@ -409,21 +423,21 @@
         [self.mapView removeOverlay:self.osmOverlay];
         self.mapView.mapType = MKMapTypeHybrid;
         [self.themeButton setTitle:@"☀️" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:@"Modalità satellite attivata."];
+        [[VoiceGuidanceService sharedService] speak:NLString(@"SAT_MODE", @"Modalità satellite attivata.")];
     } else if (next == OSMMapThemeDark) {
         self.mapView.mapType = MKMapTypeStandard;
         [self.osmOverlay switchTheme:OSMMapThemeDark];
         [self.mapView removeOverlay:self.osmOverlay];
         [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
         [self.themeButton setTitle:@"🛰️" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:@"Modalità notturna attivata."];
+        [[VoiceGuidanceService sharedService] speak:NLString(@"NIGHT_MODE", @"Modalità notturna attivata.")];
     } else {
         self.mapView.mapType = MKMapTypeStandard;
         [self.osmOverlay switchTheme:OSMMapThemeStandard];
         [self.mapView removeOverlay:self.osmOverlay];
         [self.mapView addOverlay:self.osmOverlay level:MKOverlayLevelAboveRoads];
         [self.themeButton setTitle:@"🌙" forState:UIControlStateNormal];
-        [[VoiceGuidanceService sharedService] speak:@"Mappa standard attivata."];
+        [[VoiceGuidanceService sharedService] speak:NLString(@"DAY_MODE", @"Mappa standard attivata.")];
     }
 }
 
@@ -533,7 +547,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
     [self.maneuverHUD reset];
     [[VoiceGuidanceService sharedService] resetManeuverTracking];
-    [[VoiceGuidanceService sharedService] speak:@"Navigazione terminata."];
+    [[VoiceGuidanceService sharedService] speak:NLString(@"NAV_ENDED", @"Navigazione terminata.")];
 
     [self applyCameraPerspectiveAnimated:YES];
 }
@@ -581,8 +595,8 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         startCoord = CLLocationCoordinate2DMake(45.4642, 9.1900); // Default Milano
     }
 
-    [self.topSearchPill setTitle:@"  ⏳ Calcolo itinerari in corso..." forState:UIControlStateNormal];
-    [[VoiceGuidanceService sharedService] speak:@"Ricerca itinerari alternativi..."];
+    [self.topSearchPill setTitle:NLString(@"SEARCH_PLACEHOLDER", @"  🔍 Cerca destinazione o indirizzo...") forState:UIControlStateNormal];
+    [[VoiceGuidanceService sharedService] speak:NLString(@"SEARCHING_ROUTES", @"Ricerca itinerari alternativi...")];
 
     __weak NavigationViewController *weakSelf = self;
     [[RoutingService sharedService] calculateRoutesFrom:startCoord to:coordinate destinationTitle:title completion:^(NSArray<RouteInfo *> *routes, NSError *error) {
@@ -591,13 +605,12 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
             return;
         }
 
-        [weakSelf.topSearchPill setTitle:@"  🔍 Cerca destinazione o indirizzo..." forState:UIControlStateNormal];
+        [weakSelf.topSearchPill setTitle:NLString(@"SEARCH_PLACEHOLDER", @"  🔍 Cerca destinazione o indirizzo...") forState:UIControlStateNormal];
 
         if (error || routes.count == 0) {
-            NSString *errPrompt = @"Impossibile calcolare l'itinerario. Verifica la connessione di rete.";
-            if (error.code == -2) {
-                errPrompt = @"Nessun percorso stradale trovato per questa destinazione.";
-            }
+            NSString *errPrompt = (error.code == -2)
+                ? NLString(@"NO_ROUTE_FOUND", @"Nessun percorso stradale trovato per questa destinazione.")
+                : NLString(@"CALC_ERROR", @"Errore nel calcolo del percorso.");
             [[VoiceGuidanceService sharedService] speak:errPrompt];
             return;
         }
@@ -640,7 +653,8 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         weakSelf.topSearchPill.hidden = YES;
         weakSelf.poiShelf.hidden = YES;
 
-        NSString *msg = [NSString stringWithFormat:@"Trovati %lu percorsi. Seleziona l'itinerario desiderato.", (unsigned long)routes.count];
+        NSString *fmt = NLString(@"FOUND_ROUTES_VOICE", @"Trovati %lu itinerari. Tocca quello desiderato per iniziare.");
+        NSString *msg = [NSString stringWithFormat:fmt, (unsigned long)routes.count];
         [[VoiceGuidanceService sharedService] speak:msg];
     }];
 }
@@ -722,7 +736,9 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
     [self applyCameraPerspectiveAnimated:YES];
 
-    NSString *prompt = [NSString stringWithFormat:@"Inizia a guidare verso %@.", self.currentRoute.destinationTitle];
+    BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+    NSString *prompt = isIt ? [NSString stringWithFormat:@"Inizia a guidare verso %@.", self.currentRoute.destinationTitle]
+                            : [NSString stringWithFormat:@"Start driving towards %@.", self.currentRoute.destinationTitle];
     [[VoiceGuidanceService sharedService] speak:prompt];
 }
 
@@ -881,7 +897,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
             [self.maneuverHUD updateWithManeuver:newStep distanceToStep:newStep.distance nextStep:stepAfter];
             self.offRouteConsecutiveCount = 0;
         } else if (distToStep < 25.0 && self.currentStepIndex + 1 >= self.currentRoute.steps.count) {
-            [[VoiceGuidanceService sharedService] speak:@"Sei arrivato a destinazione."];
+            [[VoiceGuidanceService sharedService] speak:NLString(@"ARRIVED", @"Sei arrivato a destinazione.")];
             [self cancelCurrentRoute];
             return;
         }
@@ -904,7 +920,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
     if (!self.isNavigating || !self.currentRoute) return;
 
     NSUInteger thisRequestId = ++self.currentRouteRequestId;
-    [[VoiceGuidanceService sharedService] speak:@"Ricalcolo del percorso in corso..."];
+    [[VoiceGuidanceService sharedService] speak:NLString(@"RECALCULATING", @"Ricalcolo del percorso in corso...")];
 
     CLLocationCoordinate2D start;
     if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
@@ -944,7 +960,7 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         [weakSelf.tripBar updateRemainingDistance:newRoute.totalDistance duration:newRoute.totalDuration trafficStatus:newRoute.trafficDescription];
 
         [[VoiceGuidanceService sharedService] resetManeuverTracking];
-        [[VoiceGuidanceService sharedService] speak:@"Nuovo percorso pronto. Continua a guidare."];
+        [[VoiceGuidanceService sharedService] speak:NLString(@"NEW_ROUTE_READY", @"Nuovo percorso pronto. Continua a guidare.")];
     }];
 }
 

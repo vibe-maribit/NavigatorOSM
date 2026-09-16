@@ -1,8 +1,8 @@
 #import "VoiceGuidanceService.h"
+#import "LocalizationManager.h"
 
 @interface VoiceGuidanceService () <AVSpeechSynthesizerDelegate>
 @property (nonatomic, strong) AVSpeechSynthesizer *synthesizer;
-@property (nonatomic, strong) AVSpeechSynthesisVoice *italianVoice;
 @property (nonatomic, copy) NSString *lastSpokenPhrase;
 @property (nonatomic, strong) NSDate *lastSpokenTime;
 
@@ -30,7 +30,6 @@
     if (self) {
         _synthesizer = [[AVSpeechSynthesizer alloc] init];
         _synthesizer.delegate = self;
-        _italianVoice = [AVSpeechSynthesisVoice voiceWithLanguage:@"it-IT"];
         _isMuted = NO;
         _trackedStepIndex = NSNotFound;
     }
@@ -74,7 +73,8 @@
     self.lastSpokenTime = now;
 
     AVSpeechUtterance *utterance = [AVSpeechUtterance speechUtteranceWithString:text];
-    utterance.voice = self.italianVoice;
+    NSString *langCode = [[LocalizationManager sharedManager] speechVoiceLanguage];
+    utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:langCode];
     utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95; // Scandita per la guida
     utterance.pitchMultiplier = 1.0;
     utterance.volume = 1.0;
@@ -98,22 +98,26 @@
     if (distance > 750 && distance <= 1200) {
         if (!self.didSpeak1000m) {
             self.didSpeak1000m = YES;
-            [self speak:[NSString stringWithFormat:@"Tra circa un chilometro, %@", [instruction lowercaseString]]];
+            NSString *fmt = NLString(@"VOICE_1000M", @"Tra circa un chilometro, %@");
+            [self speak:[NSString stringWithFormat:fmt, [instruction lowercaseString]]];
         }
     } else if (distance > 350 && distance <= 600) {
         if (!self.didSpeak500m) {
             self.didSpeak500m = YES;
-            [self speak:[NSString stringWithFormat:@"Tra 500 metri, %@", [instruction lowercaseString]]];
+            NSString *fmt = NLString(@"VOICE_500M", @"Tra 500 metri, %@");
+            [self speak:[NSString stringWithFormat:fmt, [instruction lowercaseString]]];
         }
     } else if (distance > 100 && distance <= 250) {
         if (!self.didSpeak200m) {
             self.didSpeak200m = YES;
-            [self speak:[NSString stringWithFormat:@"Tra 200 metri, %@", [instruction lowercaseString]]];
+            NSString *fmt = NLString(@"VOICE_200M", @"Tra 200 metri, %@");
+            [self speak:[NSString stringWithFormat:fmt, [instruction lowercaseString]]];
         }
     } else if (distance <= 45 && distance > 10) {
         if (!self.didSpeakNow) {
             self.didSpeakNow = YES;
-            [self speak:[NSString stringWithFormat:@"Ora, %@", [instruction lowercaseString]]];
+            NSString *fmt = NLString(@"VOICE_NOW", @"Ora, %@");
+            [self speak:[NSString stringWithFormat:fmt, [instruction lowercaseString]]];
         }
     }
 }

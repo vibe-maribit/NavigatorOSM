@@ -1,4 +1,5 @@
 #import "POIResultsCardView.h"
+#import "../Services/LocalizationManager.h"
 #import <objc/runtime.h>
 
 @interface POIResultsCardView ()
@@ -53,7 +54,8 @@
                categoryName:(NSString *)categoryName
             currentLocation:(CLLocation *)currentLocation {
     self.annotations = annotations;
-    self.titleLabel.text = [NSString stringWithFormat:@"%@ %lu nelle vicinanze", categoryName, (unsigned long)annotations.count];
+    NSString *fmt = NLString(@"POI_NEARBY", @"%@ %lu nelle vicinanze");
+    self.titleLabel.text = [NSString stringWithFormat:fmt, categoryName, (unsigned long)annotations.count];
 
     // Rimuovi card precedenti
     for (UIView *sub in self.scrollView.subviews) {
@@ -122,7 +124,7 @@
         navBtn.frame = CGRectMake(10, cardH - 36, cardW - 20, 28);
         navBtn.backgroundColor = [UIColor colorWithRed:0.15 green:0.65 blue:0.35 alpha:1.0];
         navBtn.layer.cornerRadius = 8.0;
-        [navBtn setTitle:@"▶ Naviga" forState:UIControlStateNormal];
+        [navBtn setTitle:NLString(@"START_NAVIGATION", @"▶ Naviga") forState:UIControlStateNormal];
         [navBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         navBtn.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
         objc_setAssociatedObject(navBtn, "poi_index", @(i), OBJC_ASSOCIATION_RETAIN_NONATOMIC);

@@ -1,4 +1,5 @@
 #import "QuickPOIShelfView.h"
+#import "../Services/LocalizationManager.h"
 #import <objc/runtime.h>
 
 @interface QuickPOIShelfView ()
@@ -40,11 +41,11 @@
 - (void)setupButtons {
     // Query con tag Nominatim corretti (amenity=) invece di q= generico
     NSArray *items = @[
-        @{@"icon": @"⛽", @"title": @"Benzina",    @"query": @"fuel",       @"type": @"amenity"},
-        @{@"icon": @"🍕", @"title": @"Ristoranti", @"query": @"restaurant", @"type": @"amenity"},
-        @{@"icon": @"🅿️", @"title": @"Parcheggi",  @"query": @"parking",    @"type": @"amenity"},
-        @{@"icon": @"☕", @"title": @"Bar",         @"query": @"cafe",       @"type": @"amenity"},
-        @{@"icon": @"💊", @"title": @"Farmacie",   @"query": @"pharmacy",   @"type": @"amenity"}
+        @{@"icon": @"⛽", @"title": NLString(@"FUEL", @"Benzina"),         @"query": @"fuel",       @"type": @"amenity"},
+        @{@"icon": @"🍕", @"title": NLString(@"RESTAURANTS", @"Ristoranti"), @"query": @"restaurant", @"type": @"amenity"},
+        @{@"icon": @"🅿️", @"title": NLString(@"PARKING", @"Parcheggi"),     @"query": @"parking",    @"type": @"amenity"},
+        @{@"icon": @"☕", @"title": NLString(@"CAFE", @"Bar"),             @"query": @"cafe",       @"type": @"amenity"},
+        @{@"icon": @"💊", @"title": NLString(@"PHARMACY", @"Farmacie"),     @"query": @"pharmacy",   @"type": @"amenity"}
     ];
 
     CGFloat totalW = self.bounds.size.width - 50;

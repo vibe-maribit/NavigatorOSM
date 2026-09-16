@@ -1,4 +1,5 @@
 #import "SearchViewController.h"
+#import "../Services/LocalizationManager.h"
 
 @interface SearchItem : NSObject
 @property (nonatomic, copy) NSString *displayName;
@@ -70,7 +71,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Cerca Destinazione";
+    self.title = NLString(@"SEARCH_TITLE", @"Cerca Destinazione");
     self.view.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
 
     self.results = [NSMutableArray array];
@@ -97,7 +98,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
     closeBtn.backgroundColor = [UIColor colorWithRed:0.85 green:0.25 blue:0.25 alpha:0.9];
     closeBtn.layer.cornerRadius = 10.0;
     closeBtn.layer.masksToBounds = YES;
-    [closeBtn setTitle:@"✕ Chiudi" forState:UIControlStateNormal];
+    [closeBtn setTitle:NLString(@"CLOSE", @"✕ Chiudi") forState:UIControlStateNormal];
     [closeBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15.0];
     [closeBtn addTarget:self action:@selector(handleClose) forControlEvents:UIControlEventTouchUpInside];
@@ -107,7 +108,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
     self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(10, 10, topBar.bounds.size.width - 116, 44)];
     self.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"Cerca via, città o luogo...";
+    self.searchBar.placeholder = NLString(@"SEARCH_INPUT_PLACEHOLDER", @"Cerca via, città o luogo...");
     self.searchBar.keyboardAppearance = UIKeyboardAppearanceDark;
     self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
     self.searchBar.barTintColor = [UIColor colorWithWhite:0.16 alpha:1.0];
@@ -313,7 +314,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (self.showingRecents) {
-        return @"🕒 DESTINAZIONI RECENTI";
+        return NLString(@"RECENT_DESTINATIONS", @"🕒 DESTINAZIONI RECENTI");
     } else if (self.results.count > 0) {
         return [NSString stringWithFormat:@"RISULTATI PER \"%@\"", self.searchBar.text ?: @""];
     }
@@ -331,7 +332,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
             clearCell.textLabel.font = [UIFont systemFontOfSize:14.0];
             clearCell.textLabel.textAlignment = NSTextAlignmentCenter;
         }
-        clearCell.textLabel.text = @"🗑️ Cancella cronologia destinazioni";
+        clearCell.textLabel.text = NLString(@"CLEAR_HISTORY", @"🗑️ Cancella cronologia destinazioni");
         return clearCell;
     }
 
@@ -345,7 +346,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
             mapCell.textLabel.font = [UIFont boldSystemFontOfSize:15.0];
             mapCell.textLabel.textAlignment = NSTextAlignmentCenter;
         }
-        mapCell.textLabel.text = [NSString stringWithFormat:@"📍 Mostra tutti i %lu risultati sulla mappa", (unsigned long)self.results.count];
+        mapCell.textLabel.text = [NSString stringWithFormat:NLString(@"SHOW_ALL_MAP", @"📍 Mostra tutti i %lu risultati sulla mappa"), (unsigned long)self.results.count];
         return mapCell;
     }
 
@@ -371,7 +372,7 @@ static NSString *const kRecentDestinationsKey = @"NavigatoreOSM_RecentDestinatio
             NSRange restRange = NSMakeRange(1, parts.count - 1);
             cell.detailTextLabel.text = [[parts subarrayWithRange:restRange] componentsJoinedByString:@", "];
         } else {
-            cell.detailTextLabel.text = @"Destinazione recente";
+            cell.detailTextLabel.text = NLString(@"RECENT_DEST_SUB", @"Destinazione recente");
         }
     } else {
         cell.textLabel.text = mainTitle;

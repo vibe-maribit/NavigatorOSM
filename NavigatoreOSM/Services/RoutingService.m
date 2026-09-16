@@ -1,4 +1,5 @@
 #import "RoutingService.h"
+#import "LocalizationManager.h"
 
 @implementation ManeuverStep
 @end
@@ -34,45 +35,52 @@
     return self;
 }
 
-static NSString *FormatManeuverItalian(NSString *type, NSString *modifier, NSString *name) {
+static NSString *FormatManeuverLocalized(NSString *type, NSString *modifier, NSString *name) {
+    BOOL isIt = [[LocalizationManager sharedManager] isItalian];
     NSString *base = @"";
     if ([type isEqualToString:@"depart"]) {
-        base = @"Parti verso";
+        base = isIt ? @"Parti verso" : @"Head towards";
     } else if ([type isEqualToString:@"arrive"]) {
-        base = @"Destinazione raggiunta";
+        return isIt ? @"Destinazione raggiunta" : @"Destination reached";
     } else if ([type isEqualToString:@"turn"]) {
-        if ([modifier isEqualToString:@"left"]) base = @"Gira a sinistra";
-        else if ([modifier isEqualToString:@"right"]) base = @"Gira a destra";
-        else if ([modifier isEqualToString:@"sharp left"]) base = @"Svolta stretta a sinistra";
-        else if ([modifier isEqualToString:@"sharp right"]) base = @"Svolta stretta a destra";
-        else if ([modifier isEqualToString:@"slight left"]) base = @"Tieni la sinistra";
-        else if ([modifier isEqualToString:@"slight right"]) base = @"Tieni la destra";
-        else if ([modifier isEqualToString:@"uturn"]) base = @"Fai inversione a U";
-        else base = @"Svolta";
+        if ([modifier isEqualToString:@"left"]) base = isIt ? @"Gira a sinistra" : @"Turn left";
+        else if ([modifier isEqualToString:@"right"]) base = isIt ? @"Gira a destra" : @"Turn right";
+        else if ([modifier isEqualToString:@"sharp left"]) base = isIt ? @"Svolta stretta a sinistra" : @"Sharp left";
+        else if ([modifier isEqualToString:@"sharp right"]) base = isIt ? @"Svolta stretta a destra" : @"Sharp right";
+        else if ([modifier isEqualToString:@"slight left"]) base = isIt ? @"Tieni la sinistra" : @"Keep left";
+        else if ([modifier isEqualToString:@"slight right"]) base = isIt ? @"Tieni la destra" : @"Keep right";
+        else if ([modifier isEqualToString:@"uturn"]) return isIt ? @"Fai inversione a U" : @"Make a U-turn";
+        else base = isIt ? @"Svolta" : @"Turn";
     } else if ([type isEqualToString:@"roundabout"]) {
-        base = @"Alla rotonda prendi l'uscita";
+        base = isIt ? @"Alla rotonda prendi l'uscita" : @"At the roundabout take the exit";
     } else if ([type isEqualToString:@"fork"]) {
-        if ([modifier isEqualToString:@"left"]) base = @"Al bivio tieni la sinistra";
-        else base = @"Al bivio tieni la destra";
+        if ([modifier isEqualToString:@"left"]) return isIt ? @"Al bivio tieni la sinistra" : @"Keep left at the fork";
+        else return isIt ? @"Al bivio tieni la destra" : @"Keep right at the fork";
     } else if ([type isEqualToString:@"on ramp"] || [type isEqualToString:@"off ramp"]) {
-        base = @"Prendi l'uscita";
+        base = isIt ? @"Prendi l'uscita" : @"Take the exit";
     } else {
-        base = @"Continua";
+        base = isIt ? @"Continua" : @"Continue";
     }
 
     if (name && name.length > 0) {
-        return [NSString stringWithFormat:@"%@ su %@", base, name];
+        return isIt ? [NSString stringWithFormat:@"%@ su %@", base, name]
+                    : [NSString stringWithFormat:@"%@ onto %@", base, name];
     }
     return base;
 }
 
 static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
+    BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+    NSString *smooth = isIt ? @"Scorrevole 🟢" : @"Smooth Flow 🟢";
+    NSString *slow = isIt ? @"Rallentamenti 🟡" : @"Slowdowns 🟡";
+    NSString *heavy = isIt ? @"Traffico intenso 🔴" : @"Heavy Traffic 🔴";
+
     NSDictionary *annotation = leg[@"annotation"];
-    if (!annotation) return @"Scorrevole 🟢";
+    if (!annotation) return smooth;
 
     NSArray *speeds = annotation[@"speed"];
     if (![speeds isKindOfClass:[NSArray class]] || speeds.count == 0) {
-        return @"Scorrevole 🟢";
+        return smooth;
     }
 
     NSUInteger slowCount = 0;
@@ -87,11 +95,11 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
 
     double slowRatio = (double)slowCount / (double)total;
     if (slowRatio > 0.30) {
-        return @"Traffico intenso 🔴";
+        return heavy;
     } else if (slowRatio > 0.12) {
-        return @"Rallentamenti 🟡";
+        return slow;
     } else {
-        return @"Scorrevole 🟢";
+        return smooth;
     }
 }
 
@@ -184,7 +192,7 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                 if (loc.count >= 2) {
                     step.coordinate = CLLocationCoordinate2DMake([loc[1] doubleValue], [loc[0] doubleValue]);
                 }
-                step.instruction = FormatManeuverItalian(step.type, step.modifier, step.streetName);
+                step.instruction = FormatManeuverLocalized(step.type, step.modifier, step.streetName);
                 [steps addObject:step];
             }
         }
@@ -265,26 +273,31 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         r.routeIndex = i;
         r.isPrimary = (i == 0);
 
+        BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+
         // Assegna badge strategico
         if (fabs(r.totalDuration - minDuration) < 15.0 && fabs(r.totalDistance - minDistance) < 100.0) {
-            r.badgeTitle = @"⭐ Ottimale";
+            r.badgeTitle = NLString(@"BADGE_OPTIMAL", @"⭐ Ottimale");
         } else if (fabs(r.totalDuration - minDuration) < 15.0) {
-            r.badgeTitle = @"🚀 Più Veloce";
+            r.badgeTitle = NLString(@"BADGE_FASTEST", @"🚀 Più Veloce");
         } else if (fabs(r.totalDistance - minDistance) < 100.0) {
-            r.badgeTitle = @"🍃 Più Breve";
+            r.badgeTitle = NLString(@"BADGE_SHORTEST", @"🍃 Più Breve");
         } else {
-            r.badgeTitle = (i == 1) ? @"⚖️ Alternativa" : @"🍃 Panoramica";
+            r.badgeTitle = (i == 1) ? NLString(@"BADGE_ALTERNATIVE", @"⚖️ Alternativa") : NLString(@"BADGE_SCENIC", @"🍃 Panoramica");
         }
 
         // Assegna delta
         if (i == 0) {
-            r.deltaDescription = @"Consigliato";
+            r.deltaDescription = NLString(@"RECOMMENDED", @"Consigliato");
         } else {
             int deltaMins = (int)round((r.totalDuration - primary.totalDuration) / 60.0);
             double deltaKm = (r.totalDistance - primary.totalDistance) / 1000.0;
 
-            NSString *timeDelta = (deltaMins == 0) ? @"Stesso tempo" : (deltaMins > 0 ? [NSString stringWithFormat:@"+%d min", deltaMins] : [NSString stringWithFormat:@"%d min", deltaMins]);
-            NSString *distDelta = (fabs(deltaKm) < 0.1) ? @"Stessa dist." : (deltaKm > 0 ? [NSString stringWithFormat:@"+%.1f km", deltaKm] : [NSString stringWithFormat:@"%.1f km", deltaKm]);
+            NSString *sameTimeStr = isIt ? @"Stesso tempo" : @"Same time";
+            NSString *sameDistStr = isIt ? @"Stessa dist." : @"Same dist.";
+
+            NSString *timeDelta = (deltaMins == 0) ? sameTimeStr : (deltaMins > 0 ? [NSString stringWithFormat:@"+%d min", deltaMins] : [NSString stringWithFormat:@"%d min", deltaMins]);
+            NSString *distDelta = (fabs(deltaKm) < 0.1) ? sameDistStr : (deltaKm > 0 ? [NSString stringWithFormat:@"+%.1f km", deltaKm] : [NSString stringWithFormat:@"%.1f km", deltaKm]);
 
             r.deltaDescription = [NSString stringWithFormat:@"%@ • %@", timeDelta, distDelta];
         }

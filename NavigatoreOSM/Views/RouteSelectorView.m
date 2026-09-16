@@ -1,4 +1,5 @@
 #import "RouteSelectorView.h"
+#import "../Services/LocalizationManager.h"
 
 @interface RouteSelectorView ()
 @property (nonatomic, strong) NSArray<RouteInfo *> *routes;
@@ -37,7 +38,7 @@
         _startButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
         _startButton.backgroundColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
         _startButton.layer.cornerRadius = 12.0;
-        [_startButton setTitle:@"▶ Avvia Navigazione" forState:UIControlStateNormal];
+        [_startButton setTitle:NLString(@"START_NAVIGATION", @"▶ Avvia Navigazione") forState:UIControlStateNormal];
         [_startButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         _startButton.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
         [_startButton addTarget:self action:@selector(handleStart) forControlEvents:UIControlEventTouchUpInside];
@@ -51,7 +52,7 @@
         _cancelButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
         _cancelButton.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.9];
         _cancelButton.layer.cornerRadius = 12.0;
-        [_cancelButton setTitle:@"Annulla" forState:UIControlStateNormal];
+        [_cancelButton setTitle:NLString(@"CANCEL", @"Annulla") forState:UIControlStateNormal];
         [_cancelButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         _cancelButton.titleLabel.font = [UIFont systemFontOfSize:15.0];
         [_cancelButton addTarget:self action:@selector(handleCancel) forControlEvents:UIControlEventTouchUpInside];

@@ -1,5 +1,6 @@
 #import "ManeuverHUDView.h"
 #import "../Services/RoutingService.h"
+#import "../Services/LocalizationManager.h"
 
 @interface ManeuverHUDView ()
 
@@ -42,11 +43,11 @@
         _iconLabel.text = @"↑";
         [_mainCard addSubview:_iconLabel];
 
-        // Distanza (es. "350 m")
+        // Distanza
         _distanceLabel = [[UILabel alloc] initWithFrame:CGRectMake(78, 6, frame.size.width - 90, 32)];
         _distanceLabel.font = [UIFont boldSystemFontOfSize:26.0];
         _distanceLabel.textColor = [UIColor whiteColor];
-        _distanceLabel.text = @"Navigatore OSM";
+        _distanceLabel.text = @"Navigator OSM";
         [_mainCard addSubview:_distanceLabel];
 
         // Nome della strada in evidenza
@@ -54,7 +55,7 @@
         _streetLabel.font = [UIFont boldSystemFontOfSize:17.0];
         _streetLabel.textColor = [UIColor colorWithWhite:0.95 alpha:1.0];
         _streetLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        _streetLabel.text = @"Pronto per la guida";
+        _streetLabel.text = NLString(@"READY_TO_DRIVE", @"Pronto per la guida");
         [_mainCard addSubview:_streetLabel];
 
         // Subcard inferiore per la manovra successiva ("Poi ↰ in ...")
@@ -119,7 +120,8 @@ static NSString *ArrowSymbolForModifier(NSString *modifier, NSString *type) {
     // Anteprima seconda manovra
     if (nextStep && nextStep.streetName.length > 0) {
         NSString *nextSymbol = ArrowSymbolForModifier(nextStep.modifier, nextStep.type);
-        self.subLabel.text = [NSString stringWithFormat:@"Poi %@ su %@", nextSymbol, nextStep.streetName];
+        NSString *fmt = NLString(@"THEN_STREET", @"Poi %@ su %@");
+        self.subLabel.text = [NSString stringWithFormat:fmt, nextSymbol, nextStep.streetName];
         self.subCard.hidden = NO;
     } else {
         self.subCard.hidden = YES;
@@ -128,8 +130,8 @@ static NSString *ArrowSymbolForModifier(NSString *modifier, NSString *type) {
 
 - (void)reset {
     self.iconLabel.text = @"🧭";
-    self.distanceLabel.text = @"Navigatore OSM";
-    self.streetLabel.text = @"Tocca 'Cerca' o 'POI' per iniziare";
+    self.distanceLabel.text = @"Navigator OSM";
+    self.streetLabel.text = NLString(@"TAP_TO_START", @"Tocca 'Cerca' o 'POI' per iniziare");
     self.subCard.hidden = YES;
 }
 
