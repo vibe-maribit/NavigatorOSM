@@ -1,58 +1,164 @@
-# NavigatoreOSM per iPad Mini 1 (MD528TY/A - iOS 9.3.5)
+# 🗺️ NavigatoreOSM: In-Car GPS Navigator for Legacy iPads (iOS 9.3.5 / 32-bit armv7)
 
-Applicazione **100% NATIVA iOS** (Objective-C + MapKit + UIKit) per trasformare un vecchio iPad Mini 1ª Generazione (architettura 32-bit `armv7`, 512 MB RAM, iOS 9.3.5) in un moderno navigatore GPS per auto in stile **Google Maps & Waze** con **OpenStreetMap**, **visuale prospettica 3D/2D commutabile**, **itinerari alternativi**, **traffico in tempo reale**, **ricerca rapida POI** e **guida vocale italiana offline**.
+[![Release](https://img.shields.io/github/v/release/vibe-maribit/NavigatorOSM?style=for-the-badge&color=blue)](https://github.com/vibe-maribit/NavigatorOSM/releases)
+[![Target](https://img.shields.io/badge/Target-iOS%209.3.5%20%7C%2032--bit%20armv7-green?style=for-the-badge&logo=apple)](https://github.com/vibe-maribit/NavigatorOSM)
+[![Map](https://img.shields.io/badge/Maps-OpenStreetMap%20%7C%20Esri%20%7C%20Satellite-orange?style=for-the-badge&logo=openstreetmap)](https://openstreetmap.org)
+[![RAM Footprint](https://img.shields.io/badge/RAM%20Usage-%3C%2025%20MB%20%7C%2060%20FPS-purple?style=for-the-badge)](https://github.com/vibe-maribit/NavigatorOSM)
+[![License](https://img.shields.io/badge/License-MIT-brightgreen?style=for-the-badge)](LICENSE)
 
-Zero WebKit, zero browser: l'app consuma meno di 25 MB di RAM e sfrutta la GPU Apple per un rendering a **60 FPS fluidi**.
+> **Don't let your obsolete iPad become electronic waste.**  
+> **NavigatoreOSM** gives a second life to legacy iPad tablets (iPad Mini 1, iPad 2, iPad 3, iPad 4) running iOS 9.3.5, repurposing them into dedicated, fluid, high-performance in-car GPS navigators inspired by **Google Maps & Waze**.
 
 ---
 
-## Indice della Documentazione Completa (`docs/`)
+## 💡 The Project Mission: Smart iPad Retrofitting
 
-Per consultare ogni dettaglio del progetto, leggi le guide dedicate nella cartella [`docs/`](docs/):
+Millions of legacy Apple tablets—especially the **iPad Mini 1st Gen (A1432 / MD528TY/A)** with the **Apple A5 chip (dual-core 1.0 GHz Cortex-A9, 512 MB RAM)**—are currently sitting unused in drawers because modern iOS apps (Google Maps, Waze, Apple Maps) no longer support iOS 9, and the modern web crashes the browser due to RAM exhaustion.
 
-| Documento | Argomento Trattato |
+**NavigatoreOSM solves this with a 100% Pure Native Objective-C Architecture:**
+- **Zero WebKit / Zero Browser**: Unlike web wrappers that crash due to iOS 9 `jetsam` memory limits, NavigatoreOSM consumes **less than 25 MB of RAM** (< 5% of total system memory).
+- **60 FPS Hardware-Accelerated Rendering**: Leverages the Apple PowerVR SGX543MP2 GPU directly through MapKit and OpenGL ES pipelines for butter-smooth zooming, panning, and tilting.
+- **Zero API Keys Required**: Seamlessly runs on open, free community infrastructure (OpenStreetMap standard raster tiles, Esri Dark Canvas for night mode, Apple Hybrid Satellite photography, and OSRM routing).
+- **Wi-Fi-Only iPad GPS Support**: Includes a companion Android app and UDP/TCP network GPS receiver to broadcast high-accuracy satellite coordinates from any smartphone hotspot.
+
+---
+
+## ✨ Key Features
+
+| Feature | Description |
 | :--- | :--- |
-| 📖 [**`01_ARCHITETTURA_E_CODICE.md`**](docs/01_ARCHITETTURA_E_CODICE.md) | Architettura software, spiegazione approfondita di tutte le classi Objective-C, MapKit, OSRM, AVSpeech, socket UDP per tethering GPS. |
-| 📲 [**`02_GUIDA_INSTALLAZIONE_E_JAILBREAK.md`**](docs/02_GUIDA_INSTALLAZIONE_E_JAILBREAK.md) | Guida passo-passo per il Jailbreak di iOS 9.3.5, installazione di AppSync Unified e flash via USB da Linux con `./install-usb.sh`. |
-| 🚗 [**`03_MANUALE_USO_IN_AUTO.md`**](docs/03_MANUALE_USO_IN_AUTO.md) | Manuale completo per l'auto: alimentazione 2.1A, hotspot iPhone vs Android, visuale 3D/2D, itinerari, traffico, allerta limiti di velocità e POI rapidi. |
-| 🛠️ [**`04_GUIDA_BUILD_E_SVILUPPO.md`**](docs/04_GUIDA_BUILD_E_SVILUPPO.md) | Come ricompilare il codice su Linux con il container Docker Theos, aggiungere file al `Makefile` e gestire la cronologia Git. |
+| 🏎️ **Waze-Style 3D Cockpit** | One-tap switchable **3D perspective cockpit view** (56° pitch, vehicle tracking, dynamic speed-based altitude zoom) and **2D top-down overview**. |
+| 🛣️ **OSRM Multi-Route Corridors** | Calculates alternative routes on the fly (e.g., motorway vs. scenic state roads) with delta badges (`⭐ Optimal`, `🚀 Fastest`, `🍃 Alternative`) and relative $+min$ / $+km$ estimates. |
+| 🚦 **Dynamic Road Speed Limits** | Real-time road type classification based on highway tags (Autostrada 130 km/h, Expressway 110 km/h, Secondary 90 km/h, Urban 50 km/h) with circular speedometer badge and visual overspeed alert. |
+| 🛰️ **Tri-Mode Free Maps** | Instant cycling between **☀️ Day (OpenStreetMap Standard)**, **🌙 Night (Esri World Dark Canvas)**, and **🛰️ Satellite (Apple Hybrid photography with road overlays)**. |
+| 🗣️ **Discrete Voice Guidance** | Natural offline turn-by-turn speech using system `AVSpeechSynthesizer`. Uses intelligent distance checkpoints ($1000\text{m}$, $500\text{m}$, $200\text{m}$, *Now*) spoken **strictly once per maneuver**—no annoying constant chatter. |
+| 🔄 **True Off-Route Recalculation** | Measures exact perpendicular distance to the route polyline. If the vehicle veers $>65\text{m}$ off-track while moving, it triggers automatic route recalculation. |
+| 📊 **Real-Time Trip Countdown** | `ModernTripBarView` dynamically counts down remaining distance, estimated travel time, and traffic status in real time. |
+| 🕒 **Recent Destinations History** | Stores recent searches and locations with 1-tap navigation initiation and history clearance. |
+| ⛽ **Quick POI Shelf & Custom Search** | 1-touch search for Gas Stations (`⛽`), Parking (`🅿️`), Coffee/Food (`☕`), and Restaurants (`🍴`) with interactive map pins and distance cards. |
+| 📱 **Android GPS Tether Companion** | Broadcasts smartphone GPS coordinates over Wi-Fi hotspot to Wi-Fi-only iPads via UDP broadcast (`:8888`) or TCP client. |
+| 📲 **Cydia OTA Wireless Updates** | Official Cydia repository hosted on GitHub Pages for 1-tap wireless installations and updates over Wi-Fi. |
+| 🔌 **Always-On Driving Display** | `UIApplication.idleTimerDisabled = YES` prevents the screen from sleeping while driving. |
 
 ---
 
-## Installazione Immediata su iPad via Cavo USB (Linux)
+## 📱 Architecture & Subsystems
 
-Sul tuo PC Linux è tutto già configurato e pronto.
+```mermaid
+flowchart TD
+    App["AppDelegate\n(idleTimerDisabled = YES, Audio Session)"] --> NavVC["NavigationViewController\n(Main Cockpit Controller)"]
+    
+    subgraph MapLayer ["Map & Rendering Subsystem (60 FPS GPU)"]
+        MKMap["MKMapView (OpenGL ES Native)"]
+        Camera["MKMapCamera (Pitch 56° 3D / 0° 2D)"]
+        OSM["OSMTileOverlay (OpenStreetMap Standard)"]
+        EsriDark["OSMTileOverlay (Esri Dark Canvas - No Key)"]
+        Satellite["MKMapTypeHybrid (Native Satellite)"]
+        MKMap --> Camera
+        MKMap --> OSM
+        MKMap --> EsriDark
+        MKMap --> Satellite
+    end
 
-1. Collega l'iPad Mini 1 con il cavo USB Lightning al PC Linux.
-2. Se l'iPad chiede *"Vuoi autorizzare questo computer?"*, tocca **Autorizza**.
-3. Esegui dal terminale:
+    subgraph LocationLayer ["Location & GPS Subsystem"]
+        CLLoc["CoreLocation (iPhone Hotspot / Native GPS)"]
+        NetGPS["NetworkGPSReceiver (Android Hotspot UDP:8888 / TCP)"]
+        CLLoc --> NavVC
+        NetGPS --> NavVC
+    end
+
+    subgraph NavigationEngine ["Routing & Guidance Subsystem"]
+        OSRM["RoutingService (OSRM Engine + Corridor Synthesis)"]
+        Voice["VoiceGuidanceService (AVSpeech Checkpoints)"]
+        HUD["ManeuverHUDView (Next Turn Preview)"]
+        Trip["ModernTripBarView (Dynamic Countdown)"]
+        Speed["SpeedometerView (Dynamic Limits: 130/110/90/50)"]
+    end
+
+    NavVC --> MapLayer
+    NavVC --> NavigationEngine
+```
+
+---
+
+## 🚀 Installation Guide
+
+You can install **NavigatoreOSM** on your iPad Mini 1 using either of the following methods:
+
+### Method A: Wireless Over-The-Air via Cydia (Recommended)
+1. Ensure your iPad Mini 1 is jailbroken on iOS 9.3.5 (via **kok3shi9** or **Phoenix**).
+2. Open **Cydia** on the iPad.
+3. Tap **Sources** > **Edit** > **Add**.
+4. Enter the repository URL:
+   ```text
+   https://vibe-maribit.github.io/NavigatorOSM/
+   ```
+5. Tap **Add Source**.
+6. Search for **NavigatoreOSM** and tap **Install**.
+   *(Updates are automatically notified and installed wirelessly through Cydia!)*
+
+### Method B: USB 1-Command Fast Install (Linux / macOS)
+If your iPad has **AppSync Unified** installed from Cydia:
+1. Connect your iPad Mini to your computer via USB Lightning cable.
+2. Clone this repository and run:
    ```bash
-   cd /home/nicola/Devel/retrofit/iOS/NavigatoreOSM
+   cd NavigatoreOSM
    ./install-usb.sh
    ```
+3. The script detects your device via `libimobiledevice` and flashes `NavigatoreOSM.ipa` in under 5 seconds!
 
-Lo script installerà il pacchetto `NavigatoreOSM.ipa` sul tablet in circa 5 secondi!
-
----
-
-## File Principali del Progetto
-
-- **`NavigatoreOSM.ipa`**: Il file di installazione finale pronto per iOS 9.3.5 (32-bit `armv7`).
-- **`install-usb.sh`**: Script per installare l'app sull'iPad via cavo USB con un solo comando.
-- **`package-ipa.sh`**: Script che avvia il container Docker Theos e ricompila l'app generando l'IPA.
-- **`android-gps-forwarder.py`**: Script per inviare le coordinate GPS via Wi-Fi/UDP da smartphone Android o computer verso l'iPad Mini solo Wi-Fi (porta 8888).
-- **`NavigatoreOSM/`**: Tutti i codici sorgente nativi Objective-C, controller, viste e asset.
-- **`docs/`**: Cartella con la documentazione tecnica e le guide d'uso complete.
+### Method C: Companion Android GPS Tether App
+For Wi-Fi-only iPads lacking internal GPS hardware:
+1. Grab `GPSTether.apk` from the latest [GitHub Releases](https://github.com/vibe-maribit/NavigatorOSM/releases).
+2. Install it on your Android smartphone.
+3. Turn on Wi-Fi Hotspot on your phone and connect the iPad to it.
+4. Launch **GPS Tether** on Android and tap **Start Tethering**.
+5. Open **NavigatoreOSM** on the iPad: the speedometer and map will immediately lock onto your smartphone's satellite fix!
 
 ---
 
-## Panoramica delle Funzionalità
+## 📚 Detailed Documentation Index
 
-- **Visuale 3D Prospettica / 2D Pianta Commutabile**: Pulsante `3D / 2D` per passare dalla visuale a volo d'uccello ortogonale (2D) alla prospettiva cockpit inclinata a 56° (3D) che segue la marcia con zoom dinamico alla velocità.
-- **Design Moderno Stile Waze / Google Maps**: Scheda manovre verde smeraldo `#00875A` con anteprima della seconda svolta, barra di viaggio inferiore con orario di arrivo ETA esatto, e tachimetro circolare Waze con indicatore del limite e allarme visivo in caso di eccesso.
-- **Itinerari Alternativi**: Calcolo di più rotte con OSRM e selezione tramite cassetto flottante con confronto tempi, km e traffico.
-- **Layer Traffico in Tempo Reale**: Overlay trasparente del flusso di traffico stradale attivabile con il tasto `🚦`.
-- **Ricerca Rapida POI**: Trova con un tocco distributori di benzina (`⛽`), parcheggi (`🅿️`), bar/ristoro (`☕`) e farmacie (`💊`) posizionando i pin sulla mappa.
-- **Schermo Sempre Attivo**: `UIApplication.idleTimerDisabled = YES` impedisce lo spegnimento dello schermo durante la guida.
-- **Guida Vocale Italiana Offline**: Sintesi vocale di sistema turn-by-turn fluida e naturale con `AVSpeechSynthesizer`.
-- **Ricalcolo Automatico Fuori Rotta**: Se sbagli strada, l'app ricalcola la rotta all'istante senza distrarti.
+For in-depth technical guides, consult the dedicated manuals in the [`docs/`](docs/) directory:
+
+| Document | Content Summary |
+| :--- | :--- |
+| 📖 [**`01_ARCHITECTURE_AND_CODE.md`**](docs/01_ARCHITECTURE_AND_CODE.md) | In-depth breakdown of Objective-C classes, MapKit rendering, OSRM routing algorithms, corridor synthesis, UDP network sockets, and memory optimization. |
+| 📲 [**`02_INSTALLATION_AND_JAILBREAK_GUIDE.md`**](docs/02_INSTALLATION_AND_JAILBREAK_GUIDE.md) | Step-by-step jailbreak guide for iOS 9.3.5 (kok3shi9 / Phoenix), AppSync Unified setup, and USB deployment. |
+| 🚗 [**`03_IN_CAR_USER_MANUAL.md`**](docs/03_IN_CAR_USER_MANUAL.md) | Complete in-car operation manual: 2.1A 12V power setup, mounting orientation, iPhone vs. Android tethering, 3D navigation, and speed alerts. |
+| 🛠️ [**`04_BUILD_AND_DEVELOPMENT_GUIDE.md`**](docs/04_BUILD_AND_DEVELOPMENT_GUIDE.md) | Guide to cross-compiling for 32-bit `armv7` on Linux using the Theos Docker toolchain (`cauan/theos`), editing the `Makefile`, and updating Cydia repo indices. |
+
+---
+
+## 🛠️ Building from Source (Linux / Docker)
+
+Apple removed 32-bit `armv7` cross-compilation from modern Xcode versions. We compile the native binary using a containerized **Theos** toolchain with `iPhoneOS9.3.sdk`:
+
+```bash
+# Clean, compile native binary and generate IPA
+./package-ipa.sh
+
+# Generate Cydia Debian package (.deb)
+docker run --rm -v "$PWD:/project" -w /project cauan/theos make package DEBUG=0 messages=no
+
+# Update Cydia repository indices
+python3 cydia_repo/update-repo.py
+```
+
+---
+
+## 🤝 Contributing & Community
+
+Contributions, issues, and feature suggestions are warmly welcomed!
+- If you have an old iPad running in your car, share a photo of your setup in **Discussions**!
+- Open an [Issue](https://github.com/vibe-maribit/NavigatorOSM/issues) for bug reports or feature requests.
+- Submit a Pull Request to improve routing, translations, or UI components.
+
+---
+
+## ⚖️ License & Acknowledgments
+
+- **Code**: Licensed under the [MIT License](LICENSE).
+- **Map Data**: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
+- **Night Imagery**: © [Esri World Dark Canvas](https://www.esri.com).
+- **Routing Engine**: [Project OSRM](http://project-osrm.org/).

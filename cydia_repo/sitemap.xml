@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://vibe-maribit.github.io/NavigatorOSM/</loc>
+    <lastmod>2026-09-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png</image:loc>
+      <image:title>NavigatoreOSM - Turn Obsolete iPads into Dedicated In-Car GPS Navigators</image:title>
+      <image:caption>NavigatoreOSM native GPS navigator app icon for iOS 9.3.5</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://vibe-maribit.github.io/NavigatorOSM/isrgrootx1.crt</loc>
+    <lastmod>2026-09-16</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>
