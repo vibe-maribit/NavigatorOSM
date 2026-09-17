@@ -1,5 +1,6 @@
 #import "QuickPOIShelfView.h"
 #import "../Services/LocalizationManager.h"
+#import "../Services/FuelPriceService.h"
 #import <objc/runtime.h>
 
 @interface QuickPOIShelfView ()
@@ -140,17 +141,46 @@ static NSArray *POICategoriesDefinition(void) {
 - (void)searchCategory:(NSString *)query fromCoordinate:(CLLocationCoordinate2D)coord categoryName:(NSString *)categoryName {
     [self.spinner startAnimating];
 
+    if ([query isEqualToString:@"fuel"]) {
+        __weak QuickPOIShelfView *weakSelf = self;
+        [[FuelPriceService sharedService] fetchStationsAroundCoordinate:coord radiusKm:10 completion:^(NSArray<FuelStation *> *stations, NSError *error) {
+            if (!error && stations && stations.count > 0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [weakSelf.spinner stopAnimating];
+                    NSMutableArray *annotations = [NSMutableArray array];
+                    FuelType fType = [FuelPriceService sharedService].selectedFuelType;
+                    for (FuelStation *st in stations) {
+                        [annotations addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:fType]];
+                    }
+                    if ([weakSelf.delegate respondsToSelector:@selector(quickPOIShelfView:didFindPOIs:categoryName:)]) {
+                        [weakSelf.delegate quickPOIShelfView:weakSelf didFindPOIs:annotations categoryName:categoryName];
+                    }
+                });
+                return;
+            }
+            // Fallback su Nominatim OSM se MIMIT non restituisce stazioni o errore
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [weakSelf executeNominatimSearch:query fromCoordinate:coord categoryName:categoryName];
+            });
+        }];
+        return;
+    }
+
+    [self executeNominatimSearch:query fromCoordinate:coord categoryName:categoryName];
+}
+
+- (void)executeNominatimSearch:(NSString *)query fromCoordinate:(CLLocationCoordinate2D)coord categoryName:(NSString *)categoryName {
     // Bounding box di circa 6 km attorno alla posizione
     double delta = 0.06;
-    // Usa i tag Nominatim corretti: amenity=fuel invece di q=distributore
     NSString *urlString = [NSString stringWithFormat:
                            @"https://nominatim.openstreetmap.org/search?format=json&amenity=%@&viewbox=%.4f,%.4f,%.4f,%.4f&bounded=1&limit=15",
                            query, coord.longitude - delta, coord.latitude + delta, coord.longitude + delta, coord.latitude - delta];
 
     NSURL *url = [NSURL URLWithString:urlString];
+    __weak QuickPOIShelfView *weakSelf = self;
     NSURLSessionDataTask *task = [self.session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self.spinner stopAnimating];
+            [weakSelf.spinner stopAnimating];
         });
 
         if (error || !data) return;
@@ -176,8 +206,8 @@ static NSArray *POICategoriesDefinition(void) {
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            if ([self.delegate respondsToSelector:@selector(quickPOIShelfView:didFindPOIs:categoryName:)]) {
-                [self.delegate quickPOIShelfView:self didFindPOIs:annotations categoryName:categoryName];
+            if ([weakSelf.delegate respondsToSelector:@selector(quickPOIShelfView:didFindPOIs:categoryName:)]) {
+                [weakSelf.delegate quickPOIShelfView:weakSelf didFindPOIs:annotations categoryName:categoryName];
             }
         });
     }];

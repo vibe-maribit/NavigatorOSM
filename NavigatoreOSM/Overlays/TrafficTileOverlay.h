@@ -7,5 +7,6 @@
 
 + (instancetype)sharedOverlay;
 - (void)updateApiKey:(NSString *)apiKey;
+- (BOOL)hasValidApiKey;
 
 @end

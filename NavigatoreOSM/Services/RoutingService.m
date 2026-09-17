@@ -56,8 +56,8 @@ static int DeduceSpeedLimitForStep(NSString *ref, NSString *streetName, CLLocati
     NSString *combined = [NSString stringWithFormat:@"%@ %@", ref ?: @"", streetName ?: @""];
     NSString *upper = [combined uppercaseString];
 
-    // 1. Autostrade (A1, A4, A14, AUTOSTRADA, ecc.) -> 130 km/h
-    if ([upper containsString:@"AUTOSTRADA"]) return 130;
+    // 1. Autostrade (A1, A4, A14, AUTOSTRADA, AUTOSTRADALE, DIR) -> 130 km/h
+    if ([upper containsString:@"AUTOSTRADA"] || [upper containsString:@"AUTOSTRADALE"]) return 130;
     NSRegularExpression *motorwayRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bA[0-9]{1,3}\\b" options:0 error:nil];
     if ([motorwayRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
         return 130;
@@ -73,28 +73,27 @@ static int DeduceSpeedLimitForStep(NSString *ref, NSString *streetName, CLLocati
     }
 
     // 3. Strade Statali, Regionali, Provinciali -> 90 km/h
-    NSRegularExpression *extraurbanRegex = [NSRegularExpression regularExpressionWithPattern:@"\\b(SS|SR|SP)[0-9]+" options:0 error:nil];
+    NSRegularExpression *extraurbanRegex = [NSRegularExpression regularExpressionWithPattern:@"\\b(SS|SR|SP|NSA)\\s*[0-9]+" options:0 error:nil];
     if ([extraurbanRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
         return 90;
     }
-    if ([upper containsString:@"STATALE"] || [upper containsString:@"PROVINCIALE"] || [upper containsString:@"REGIONALE"]) {
+    if ([upper containsString:@"STATALE"] || [upper containsString:@"PROVINCIALE"] || [upper containsString:@"REGIONALE"] ||
+        [upper containsString:@"EXTRAURBANA"]) {
         return 90;
     }
 
-    // 4. Se il nome non specifica la tipologia (es. tratto senza nome o con solo numero uscita),
-    // usiamo la velocità teorica stimata dal routing engine (distance / duration)
-    if (duration > 1.0 && distance > 50.0) {
+    // 4. Se il tratto è sufficientemente lungo (> 350m), usiamo la velocità teorica stimata
+    // (evitando che le penalità di svolta/semafori su tratti brevi falsino il limite)
+    if (duration > 2.0 && distance > 350.0) {
         double modeledSpeedKmh = (distance / duration) * 3.6;
-        if (modeledSpeedKmh >= 98.0) {
+        if (modeledSpeedKmh >= 95.0) {
             return 130;
-        } else if (modeledSpeedKmh >= 78.0) {
+        } else if (modeledSpeedKmh >= 75.0) {
             return 110;
-        } else if (modeledSpeedKmh >= 60.0) {
+        } else if (modeledSpeedKmh >= 55.0) {
             return 90;
-        } else if (modeledSpeedKmh >= 45.0) {
+        } else if (modeledSpeedKmh >= 40.0) {
             return 70;
-        } else if (modeledSpeedKmh >= 25.0) {
-            return 50;
         }
     }
 

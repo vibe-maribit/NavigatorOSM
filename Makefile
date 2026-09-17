@@ -20,13 +20,16 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Services/LocalizationManager.m \
                       NavigatoreOSM/Services/NetworkGPSReceiver.m \
                       NavigatoreOSM/Services/TollGuruService.m \
+                      NavigatoreOSM/Services/SpeedCameraService.m \
                       NavigatoreOSM/Views/ManeuverHUDView.m \
                       NavigatoreOSM/Views/ModernTripBarView.m \
                       NavigatoreOSM/Views/SpeedometerView.m \
                       NavigatoreOSM/Views/RouteSelectorView.m \
                       NavigatoreOSM/Views/QuickPOIShelfView.m \
                       NavigatoreOSM/Views/POIResultsCardView.m \
-                      NavigatoreOSM/Views/VehicleAnnotationView.m
+                      NavigatoreOSM/Views/VehicleAnnotationView.m \
+                      NavigatoreOSM/Views/SpeedCameraAnnotationView.m \
+                      NavigatoreOSM/Views/FuelStationAnnotationView.m
 
 NavigatoreOSM_FRAMEWORKS = UIKit Foundation CoreGraphics CoreLocation MapKit AVFoundation QuartzCore
 NavigatoreOSM_CFLAGS = -fobjc-arc -INavigatoreOSM -O2

@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
+#import <MapKit/MapKit.h>
 
 typedef NS_ENUM(NSInteger, FuelType) {
     FuelTypePetrol = 0,    // Benzina
@@ -10,11 +11,43 @@ typedef NS_ENUM(NSInteger, FuelType) {
 
 extern NSString *const kFuelPricesUpdatedNotification;
 
+@interface FuelStation : NSObject <NSSecureCoding>
+
+@property (nonatomic, assign) long long stationId;
+@property (nonatomic, copy) NSString *brand;
+@property (nonatomic, copy) NSString *name;
+@property (nonatomic, copy) NSString *address;
+@property (nonatomic, assign) CLLocationCoordinate2D coordinate;
+@property (nonatomic, assign) double petrolPriceSelf;
+@property (nonatomic, assign) double petrolPriceServed;
+@property (nonatomic, assign) double dieselPriceSelf;
+@property (nonatomic, assign) double dieselPriceServed;
+@property (nonatomic, assign) double lpgPrice;
+@property (nonatomic, assign) double methanePrice;
+@property (nonatomic, assign) double distanceFromQuery; // in km
+@property (nonatomic, strong) NSDate *lastUpdated;
+
+- (double)effectivePriceForFuelType:(FuelType)type;
+- (NSString *)displayTitleForFuelType:(FuelType)type;
+- (NSString *)formattedSubtitle;
+
+@end
+
+@interface FuelStationAnnotation : MKPointAnnotation
+
+@property (nonatomic, strong, readonly) FuelStation *station;
+@property (nonatomic, assign, readonly) FuelType fuelType;
+
+- (instancetype)initWithStation:(FuelStation *)station fuelType:(FuelType)fuelType;
+
+@end
+
 @interface FuelPriceService : NSObject
 
 + (instancetype)sharedService;
 
 @property (nonatomic, assign) FuelType selectedFuelType;
+@property (nonatomic, strong, readonly) NSArray<FuelStation *> *cachedStations;
 
 /// Restituisce il nome localizzato del tipo di carburante
 - (NSString *)nameForFuelType:(FuelType)type;
@@ -40,7 +73,7 @@ extern NSString *const kFuelPricesUpdatedNotification;
 /// Restituisce il prezzo predefinito offline di fallback (€/L o €/kWh)
 - (double)defaultPriceForFuelType:(FuelType)type;
 
-/// Restituisce l'ultimo prezzo rilevato online tramite API MIMIT (<= 0 se non disponibile)
+/// Restituisce l'ultimo prezzo medio rilevato online tramite API MIMIT (<= 0 se non disponibile)
 - (double)onlinePriceForFuelType:(FuelType)type;
 
 /// Restituisce il prezzo attualmente effettivo (€/L o €/kWh):
@@ -61,7 +94,12 @@ extern NSString *const kFuelPricesUpdatedNotification;
 /// Data e ora dell'ultimo aggiornamento prezzi online
 - (NSDate *)lastOnlinePriceFetchDate;
 
-/// Avvia il recupero asincrono dei prezzi medi dai distributori nella zona indicata tramite API MIMIT Carburanti
+/// Avvia il recupero asincrono dei distributori e prezzi nella zona indicata tramite API MIMIT Carburanti (Prezzi Benzina)
+- (void)fetchStationsAroundCoordinate:(CLLocationCoordinate2D)coordinate
+                             radiusKm:(int)radiusKm
+                           completion:(void (^)(NSArray<FuelStation *> *stations, NSError *error))completion;
+
+/// Metodo legacy per aggiornare le medie MIMIT
 - (void)fetchOnlinePricesAroundCoordinate:(CLLocationCoordinate2D)coordinate
                                completion:(void (^)(BOOL success, NSString *statusMessage))completion;
 
@@ -76,5 +114,8 @@ extern NSString *const kFuelPricesUpdatedNotification;
 
 /// Stringa formattata riassuntiva dei costi (es. "⛽ 5.40 € • 🛣️ 3.80 € • Tot. 9.20 €")
 - (NSString *)formattedCostSummaryForFuelCost:(double)fuelCost tollCost:(double)tollCost;
+
+/// Restituisce annotazioni MKPointAnnotation per i distributori in cache per il tipo carburante selezionato
+- (NSArray<FuelStationAnnotation *> *)annotationsForCachedStations;
 
 @end

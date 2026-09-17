@@ -4,6 +4,8 @@
 #import "Services/LocalizationManager.h"
 #import "Services/FuelPriceService.h"
 #import "Services/TollGuruService.h"
+#import "Overlays/TrafficTileOverlay.h"
+#import "Services/SpeedCameraService.h"
 
 @interface SettingsViewController () <UITextFieldDelegate>
 
@@ -17,6 +19,11 @@
 @property (nonatomic, strong) UITextField *ipTextField;
 @property (nonatomic, strong) UISwitch *voiceSwitch;
 @property (nonatomic, strong) UISegmentedControl *themeSegment;
+
+// Traffico & Autovelox
+@property (nonatomic, strong) UISwitch *trafficSwitch;
+@property (nonatomic, strong) UITextField *trafficApiKeyTextField;
+@property (nonatomic, strong) UISwitch *speedCameraAlertSwitch;
 
 // Riferimenti diretti ai label diagnostici (aggiornati senza reloadSections!)
 @property (nonatomic, weak) UILabel *diagStatusLabel;
@@ -161,6 +168,16 @@
         [TollGuruService sharedService].apiKey = self.tollGuruApiKeyTextField.text;
     }
 
+    if (self.trafficSwitch) {
+        [TrafficTileOverlay sharedOverlay].isEnabled = self.trafficSwitch.isOn;
+    }
+    if (self.trafficApiKeyTextField) {
+        [[TrafficTileOverlay sharedOverlay] updateApiKey:self.trafficApiKeyTextField.text];
+    }
+    if (self.speedCameraAlertSwitch) {
+        [[NSUserDefaults standardUserDefaults] setBool:self.speedCameraAlertSwitch.isOn forKey:@"SpeedCameraAlertsEnabled"];
+    }
+
     [gps saveSettings];
     [gps startWithSavedSettings];
     [[NSUserDefaults standardUserDefaults] synchronize];
@@ -184,6 +201,8 @@
         [fuel setCustomPrice:val forFuelType:type];
     } else if (textField == self.tollGuruApiKeyTextField) {
         [TollGuruService sharedService].apiKey = textField.text;
+    } else if (textField == self.trafficApiKeyTextField) {
+        [[TrafficTileOverlay sharedOverlay] updateApiKey:textField.text];
     }
 }
 
@@ -260,7 +279,7 @@
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 8; // 0: Versione, 1: Lingua, 2: Carburante, 3: GPS, 4: Cydia, 5: Voce, 6: Mappa, 7: Chiudi
+    return 9; // 0: Versione, 1: Lingua, 2: Carburante, 3: GPS, 4: Traffico & Velox, 5: Cydia, 6: Voce, 7: Mappa, 8: Chiudi
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -269,10 +288,11 @@
         case 1: return 1; // Lingua Interfaccia
         case 2: return 6; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT, TollGuru Key, TollGuru Status
         case 3: return 4; // Ricevitore GPS di Rete (Porta, IP Server, Diagnostica, Ultima Posizione)
-        case 4: return 2; // Repository Cydia OTA
-        case 5: return 1; // Guida Vocale
-        case 6: return 1; // Stile Mappa
-        case 7: return 1; // Pulsante Salva ed Esci
+        case 4: return 3; // Traffico & Autovelox: Attiva Traffico, Chiave TomTom, Avvisi Velox
+        case 5: return 2; // Repository Cydia OTA
+        case 6: return 1; // Guida Vocale
+        case 7: return 1; // Stile Mappa
+        case 8: return 1; // Pulsante Salva ed Esci
         default: return 0;
     }
 }
@@ -283,10 +303,11 @@
         case 1: return NLString(@"SEC_LANGUAGE", @"🌐 LINGUA APPLICAZIONE");
         case 2: return NLString(@"SEC_FUEL", @"⛽ CARBURANTE & COSTI DI VIAGGIO");
         case 3: return NLString(@"SEC_GPS", @"🛰️ RICEVITORE GPS DI RETE (DA SMARTPHONE ANDROID)");
-        case 4: return NLString(@"SEC_CYDIA", @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)");
-        case 5: return NLString(@"SEC_VOICE", @"🔊 GUIDA VOCALE");
-        case 6: return NLString(@"SEC_MAP", @"🗺️ MAPPE & ASPETTO");
-        case 7: return nil;
+        case 4: return NLString(@"SEC_TRAFFIC_VELOX", @"🚦 TRAFFICO LIVE & 📸 AUTOVELOX");
+        case 5: return NLString(@"SEC_CYDIA", @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)");
+        case 6: return NLString(@"SEC_VOICE", @"🔊 GUIDA VOCALE");
+        case 7: return NLString(@"SEC_MAP", @"🗺️ MAPPE & ASPETTO");
+        case 8: return nil;
         default: return @"";
     }
 }
@@ -497,8 +518,47 @@
             self.diagLocationLabel = cell.detailTextLabel;
         }
     }
-    // SEZIONE 4: Cydia Repo OTA
+    // SEZIONE 4: Traffico Live & Autovelox
     else if (indexPath.section == 4) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = NLString(@"TRAFFIC_ENABLED", @"Traffico in Tempo Reale");
+            if (!self.trafficSwitch) {
+                self.trafficSwitch = [[UISwitch alloc] init];
+                self.trafficSwitch.on = [TrafficTileOverlay sharedOverlay].isEnabled;
+                self.trafficSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+            }
+            cell.accessoryView = self.trafficSwitch;
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = NLString(@"TOMTOM_KEY", @"Chiave API TomTom");
+            if (!self.trafficApiKeyTextField) {
+                self.trafficApiKeyTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 150, 32)];
+                self.trafficApiKeyTextField.textColor = [UIColor whiteColor];
+                self.trafficApiKeyTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+                self.trafficApiKeyTextField.textAlignment = NSTextAlignmentCenter;
+                self.trafficApiKeyTextField.layer.cornerRadius = 6.0;
+                self.trafficApiKeyTextField.placeholder = NLString(@"OPTIONAL_API_KEY", @"Opzionale");
+                self.trafficApiKeyTextField.autocorrectionType = UITextAutocorrectionTypeNo;
+                self.trafficApiKeyTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                self.trafficApiKeyTextField.delegate = self;
+            }
+            self.trafficApiKeyTextField.text = [TrafficTileOverlay sharedOverlay].apiKey;
+            cell.accessoryView = self.trafficApiKeyTextField;
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = NLString(@"SPEED_CAMERA_ALERTS", @"Avvisi Visivi & Vocali Autovelox");
+            if (!self.speedCameraAlertSwitch) {
+                self.speedCameraAlertSwitch = [[UISwitch alloc] init];
+                BOOL isEnabled = YES;
+                if ([[NSUserDefaults standardUserDefaults] objectForKey:@"SpeedCameraAlertsEnabled"]) {
+                    isEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"SpeedCameraAlertsEnabled"];
+                }
+                self.speedCameraAlertSwitch.on = isEnabled;
+                self.speedCameraAlertSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+            }
+            cell.accessoryView = self.speedCameraAlertSwitch;
+        }
+    }
+    // SEZIONE 5: Cydia Repo OTA
+    else if (indexPath.section == 5) {
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"CYDIA_SOURCE", @"Sorgente Cydia");
             cell.detailTextLabel.text = @"https://vibe-maribit.github.io/NavigatorOSM/";
@@ -511,8 +571,8 @@
             cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.7 alpha:1.0];
         }
     }
-    // SEZIONE 5: Guida Vocale
-    else if (indexPath.section == 5) {
+    // SEZIONE 6: Guida Vocale
+    else if (indexPath.section == 6) {
         cell.textLabel.text = NLString(@"VOICE_SWITCH", @"Attiva Istruzioni Vocali");
         if (!self.voiceSwitch) {
             self.voiceSwitch = [[UISwitch alloc] init];
@@ -521,8 +581,8 @@
         }
         cell.accessoryView = self.voiceSwitch;
     }
-    // SEZIONE 6: Stile Mappa
-    else if (indexPath.section == 6) {
+    // SEZIONE 7: Stile Mappa
+    else if (indexPath.section == 7) {
         cell.textLabel.text = NLString(@"MAP_STYLE", @"Stile Mappa");
         if (!self.themeSegment) {
             self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[
@@ -535,8 +595,8 @@
         }
         cell.accessoryView = self.themeSegment;
     }
-    // SEZIONE 7: Pulsante Salva ed Esci (footer)
-    else if (indexPath.section == 7) {
+    // SEZIONE 8: Pulsante Salva ed Esci (footer)
+    else if (indexPath.section == 8) {
         cell.textLabel.text = NLString(@"SAVE_EXIT", @"💾 Salva ed Esci");
         cell.textLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
         cell.textLabel.font = [UIFont boldSystemFontOfSize:17.0];
@@ -566,10 +626,10 @@
             [self presentViewController:resetAlert animated:YES completion:nil];
         }
     }
-    if (indexPath.section == 4 && indexPath.row == 0) {
+    if (indexPath.section == 5 && indexPath.row == 0) {
         [self copyCydiaRepoURL];
     }
-    if (indexPath.section == 7 && indexPath.row == 0) {
+    if (indexPath.section == 8 && indexPath.row == 0) {
         [self handleClose];
     }
 }

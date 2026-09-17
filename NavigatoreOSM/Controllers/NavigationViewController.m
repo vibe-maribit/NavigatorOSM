@@ -17,6 +17,9 @@
 #import "../Services/FuelPriceService.h"
 #import "../Services/RouteTrackingEngine.h"
 #import "../Views/VehicleAnnotationView.h"
+#import "../Services/SpeedCameraService.h"
+#import "../Views/SpeedCameraAnnotationView.h"
+#import "../Views/FuelStationAnnotationView.h"
 
 @interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate, RouteSummaryViewControllerDelegate, RouteTrackingEngineDelegate, UIGestureRecognizerDelegate>
 
@@ -42,6 +45,15 @@
 @property (nonatomic, strong) RouteSelectorView *routeSelector;
 @property (nonatomic, strong) QuickPOIShelfView *poiShelf;
 @property (nonatomic, strong) POIResultsCardView *poiResultsCard;
+
+// Allerta Autovelox in avvicinamento
+@property (nonatomic, strong) UIView *cameraAlertBanner;
+@property (nonatomic, strong) UILabel *cameraAlertLabel;
+@property (nonatomic, assign) long long lastAlertedCameraId;
+@property (nonatomic, strong) NSDate *lastCameraAlertDate;
+@property (nonatomic, strong) NSMutableArray<SpeedCameraAnnotation *> *cameraAnnotations;
+@property (nonatomic, assign) NSTimeInterval lastCameraCheckTime;
+@property (nonatomic, assign) BOOL hasFetchedInitialCameras;
 
 // Controlli Flottanti (FAB) — Colonna Verticale Collapsible
 @property (nonatomic, strong) UIButton *topSearchPill;
@@ -171,6 +183,10 @@
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [UIApplication sharedApplication].idleTimerDisabled = YES;
+    [self updateCameraAnnotationsOnMap];
+    if (self.currentLocation) {
+        [self refreshSpeedCamerasAroundCoordinate:self.currentLocation.coordinate];
+    }
 }
 
 #pragma mark - Setup UI Moderna (Google Maps / Waze)
@@ -251,6 +267,31 @@
     self.poiResultsCard.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     self.poiResultsCard.delegate = self;
     [self.view addSubview:self.poiResultsCard];
+
+    self.cameraAnnotations = [NSMutableArray array];
+
+    // 10. Banner Allerta Autovelox in Avvicinamento
+    CGFloat bannerW = MIN(380, w - 48);
+    self.cameraAlertBanner = [[UIView alloc] initWithFrame:CGRectMake(24, 134, bannerW, 38)];
+    self.cameraAlertBanner.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
+    self.cameraAlertBanner.backgroundColor = [UIColor colorWithRed:0.90 green:0.20 blue:0.15 alpha:0.95];
+    self.cameraAlertBanner.layer.cornerRadius = 10.0;
+    self.cameraAlertBanner.layer.borderColor = [[UIColor whiteColor] CGColor];
+    self.cameraAlertBanner.layer.borderWidth = 1.5;
+    self.cameraAlertBanner.layer.shadowColor = [[UIColor blackColor] CGColor];
+    self.cameraAlertBanner.layer.shadowOpacity = 0.5;
+    self.cameraAlertBanner.layer.shadowRadius = 4.0;
+    self.cameraAlertBanner.layer.shadowOffset = CGSizeMake(0, 2);
+    self.cameraAlertBanner.hidden = YES;
+
+    self.cameraAlertLabel = [[UILabel alloc] initWithFrame:self.cameraAlertBanner.bounds];
+    self.cameraAlertLabel.font = [UIFont boldSystemFontOfSize:12.5];
+    self.cameraAlertLabel.textColor = [UIColor whiteColor];
+    self.cameraAlertLabel.textAlignment = NSTextAlignmentCenter;
+    self.cameraAlertLabel.adjustsFontSizeToFitWidth = YES;
+    self.cameraAlertLabel.minimumScaleFactor = 0.7;
+    [self.cameraAlertBanner addSubview:self.cameraAlertLabel];
+    [self.view addSubview:self.cameraAlertBanner];
 }
 
 - (void)handleLanguageChanged:(NSNotification *)note {
@@ -491,9 +532,22 @@
 - (void)toggleTraffic {
     self.trafficOverlay.isEnabled = !self.trafficOverlay.isEnabled;
     if (self.trafficOverlay.isEnabled) {
-        [self.mapView addOverlay:self.trafficOverlay level:MKOverlayLevelAboveRoads];
+        if (![self.mapView.overlays containsObject:self.trafficOverlay]) {
+            [self.mapView addOverlay:self.trafficOverlay level:MKOverlayLevelAboveRoads];
+        }
         [self.trafficButton setTitle:@"🚦" forState:UIControlStateNormal];
         [[VoiceGuidanceService sharedService] speak:NLString(@"TRAFFIC_ON", @"Traffico attivato.")];
+
+        if (![self.trafficOverlay hasValidApiKey]) {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:NLString(@"TRAFFIC_KEY_TITLE", @"Traffico in Tempo Reale")
+                                                                           message:NLString(@"TRAFFIC_KEY_MSG", @"Il livello del traffico è attivo ma richiede una chiave API TomTom per visualizzare il flusso in tempo reale.\n\nPuoi registrarti gratuitamente su developer.tomtom.com (2500 richieste/giorno) e inserirla nelle Impostazioni.")
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:NLString(@"SETTINGS_TITLE", @"⚙️ Impostazioni") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                [self openSettings];
+            }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
+        }
     } else {
         [self.mapView removeOverlay:self.trafficOverlay];
         [self.trafficButton setTitle:@"⚪" forState:UIControlStateNormal];
@@ -578,6 +632,9 @@
     self.routeSelector.hidden = YES;
     self.tripBar.hidden = YES;
     self.maneuverHUD.hidden = YES;
+    self.cameraAlertBanner.hidden = YES;
+    self.lastAlertedCameraId = 0;
+    self.lastCameraAlertDate = nil;
     [self.speedometer setDynamicSpeedLimit:0];
 
     // Ripristina barra di ricerca e POI in alto
@@ -812,13 +869,14 @@
                                  duration:self.currentRoute.totalDuration
                             trafficStatus:self.currentRoute.trafficDescription];
 
-    // Attiva motore di tracciamento mezzeria
     [self.trackingEngine setActiveRoute:selectedRoute initialLocation:self.currentLocation];
     self.isCruisingWithVehiclePuck = NO;
     if ([self.mapView.annotations containsObject:self.vehicleAnnotation]) {
         [self.mapView removeAnnotation:self.vehicleAnnotation];
     }
     self.mapView.showsUserLocation = YES;
+
+    [self refreshSpeedCamerasForRoute:selectedRoute];
     self.isTrackingVehicle = YES;
 
     [self startDisplayLink];
@@ -979,6 +1037,7 @@
 
         [weakSelf.routeSelector setRoutes:routes];
         weakSelf.routeSelector.hidden = NO;
+        [weakSelf refreshSpeedCamerasForRoute:routes[0]];
 
         NSString *foundVoiceFmt = NLString(@"FOUND_ROUTES_VOICE", @"Trovati %lu itinerari. Tocca quello desiderato per iniziare.");
         NSString *voiceMsg = [NSString stringWithFormat:foundVoiceFmt, (unsigned long)routes.count];
@@ -1043,6 +1102,31 @@
         }
         [vehView updateHeading:self.vehicleAnnotation.heading cameraHeading:self.mapView.camera.heading];
         return vehView;
+    }
+
+    if ([annotation isKindOfClass:[SpeedCameraAnnotation class]]) {
+        static NSString *camId = @"SpeedCameraAnnotationView";
+        SpeedCameraAnnotationView *camView = (SpeedCameraAnnotationView *)[mapView dequeueReusableAnnotationViewWithIdentifier:camId];
+        if (!camView) {
+            camView = [[SpeedCameraAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:camId];
+        } else {
+            camView.annotation = annotation;
+        }
+        [camView updateWithCamera:((SpeedCameraAnnotation *)annotation).camera];
+        return camView;
+    }
+
+    if ([annotation isKindOfClass:[FuelStationAnnotation class]]) {
+        static NSString *fuelId = @"FuelStationAnnotationView";
+        FuelStationAnnotationView *fuelView = (FuelStationAnnotationView *)[mapView dequeueReusableAnnotationViewWithIdentifier:fuelId];
+        if (!fuelView) {
+            fuelView = [[FuelStationAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:fuelId];
+        } else {
+            fuelView.annotation = annotation;
+        }
+        FuelStationAnnotation *fAnn = (FuelStationAnnotation *)annotation;
+        [fuelView updateWithStation:fAnn.station fuelType:fAnn.fuelType];
+        return fuelView;
     }
 
     static NSString *poiId = @"POIAnnotation";
@@ -1134,6 +1218,11 @@
         cam.pitch = self.is3DMode ? 56.0 : 0.0;
         cam.heading = (heading >= 0) ? heading : 0.0;
         [self.mapView setCamera:cam animated:YES];
+    }
+
+    if (!self.hasFetchedInitialCameras && CLLocationCoordinate2DIsValid(location.coordinate) && fabs(location.coordinate.latitude) > 0.1) {
+        self.hasFetchedInitialCameras = YES;
+        [self refreshSpeedCamerasAroundCoordinate:location.coordinate];
     }
 
     if (self.isNavigating && self.trackingEngine.hasActiveRoute) {
@@ -1268,6 +1357,12 @@
         // 5. Aggiorna countdown e HUD
         [self updateHUDFromTrackingEngine];
     }
+
+    // Controllo allerta autovelox a cadenza regolare (~2 volte al secondo)
+    if (now - self.lastCameraCheckTime > 0.5) {
+        self.lastCameraCheckTime = now;
+        [self checkSpeedCameraAlerts];
+    }
 }
 
 - (void)updateHUDFromTrackingEngine {
@@ -1281,6 +1376,17 @@
         if (dynamicLimit <= 0) {
             dynamicLimit = [RoutingService deduceSpeedLimitForStep:currentRoadStep];
         }
+
+        // Se è presente un autovelox in avvicinamento entro 500m con limite certificato, ha la precedenza
+        CLLocationDistance camDist = 0;
+        CLLocationDirection heading = (self.vehicleAnnotation.heading >= 0) ? self.vehicleAnnotation.heading : self.currentHeading;
+        SpeedCamera *cam = [[SpeedCameraService sharedService] checkApproachingCameraFromLocation:self.currentLocation
+                                                                                            heading:heading
+                                                                                        outDistance:&camDist];
+        if (cam && cam.speedLimit > 0 && camDist < 500.0) {
+            dynamicLimit = cam.speedLimit;
+        }
+
         [self.speedometer setDynamicSpeedLimit:dynamicLimit];
     }
 
@@ -1299,6 +1405,110 @@
 
         // Istruzioni vocali discrete con checkpoint
         [[VoiceGuidanceService sharedService] speakManeuver:targetStep.instruction distanceInMeters:distToStep stepIndex:stepIdx];
+    }
+}
+
+#pragma mark - Gestione e Allerte Autovelox
+
+- (void)checkSpeedCameraAlerts {
+    if (!self.currentLocation) return;
+
+    BOOL alertsEnabled = YES;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"SpeedCameraAlertsEnabled"]) {
+        alertsEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"SpeedCameraAlertsEnabled"];
+    }
+    if (!alertsEnabled) {
+        if (!self.cameraAlertBanner.hidden) {
+            self.cameraAlertBanner.hidden = YES;
+        }
+        return;
+    }
+
+    CLLocationDistance distToCam = 0;
+    CLLocationDirection heading = (self.vehicleAnnotation.heading >= 0) ? self.vehicleAnnotation.heading : self.currentHeading;
+    SpeedCamera *approaching = [[SpeedCameraService sharedService] checkApproachingCameraFromLocation:self.currentLocation
+                                                                                               heading:heading
+                                                                                           outDistance:&distToCam];
+
+    if (approaching) {
+        if (approaching.speedLimit > 0 && distToCam < 500.0) {
+            [self.speedometer setDynamicSpeedLimit:approaching.speedLimit];
+        }
+
+        NSString *limitText = (approaching.speedLimit > 0) ? [NSString stringWithFormat:@" • Limite %d km/h", approaching.speedLimit] : @"";
+        self.cameraAlertLabel.text = [NSString stringWithFormat:@"📸 %@ a %.0fm%@", [approaching typeDescription], distToCam, limitText];
+
+        if (self.cameraAlertBanner.hidden) {
+            self.cameraAlertBanner.alpha = 0.0;
+            self.cameraAlertBanner.hidden = NO;
+            [UIView animateWithDuration:0.25 animations:^{
+                self.cameraAlertBanner.alpha = 1.0;
+            }];
+        }
+
+        // Notifica vocale con cooldown di 45 secondi
+        BOOL canVoiceAlert = (approaching.osmId != self.lastAlertedCameraId) ||
+                             (!self.lastCameraAlertDate || [[NSDate date] timeIntervalSinceDate:self.lastCameraAlertDate] > 45.0);
+
+        if (canVoiceAlert && distToCam < 600.0) {
+            self.lastAlertedCameraId = approaching.osmId;
+            self.lastCameraAlertDate = [NSDate date];
+
+            int roundedDist = (int)(round(distToCam / 50.0) * 50.0);
+            if (roundedDist < 50) roundedDist = 50;
+
+            NSString *voiceText;
+            if (approaching.speedLimit > 0) {
+                voiceText = [NSString stringWithFormat:@"Attenzione, controllo della velocità a %d metri. Limite %d chilometri orari.",
+                             roundedDist, approaching.speedLimit];
+            } else {
+                voiceText = [NSString stringWithFormat:@"Attenzione, postazione di controllo velocità a %d metri.",
+                             roundedDist];
+            }
+            [[VoiceGuidanceService sharedService] speak:voiceText];
+        }
+    } else {
+        if (!self.cameraAlertBanner.hidden) {
+            [UIView animateWithDuration:0.25 animations:^{
+                self.cameraAlertBanner.alpha = 0.0;
+            } completion:^(BOOL finished) {
+                self.cameraAlertBanner.hidden = YES;
+            }];
+        }
+    }
+}
+
+- (void)refreshSpeedCamerasAroundCoordinate:(CLLocationCoordinate2D)coord {
+    if (!CLLocationCoordinate2DIsValid(coord) || (fabs(coord.latitude) < 0.1 && fabs(coord.longitude) < 0.1)) return;
+    __weak NavigationViewController *weakSelf = self;
+    [[SpeedCameraService sharedService] fetchCamerasAroundCoordinate:coord radiusMeters:15000 completion:^(NSArray<SpeedCamera *> *cameras, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateCameraAnnotationsOnMap];
+        });
+    }];
+}
+
+- (void)refreshSpeedCamerasForRoute:(RouteInfo *)route {
+    if (!route) return;
+    __weak NavigationViewController *weakSelf = self;
+    [[SpeedCameraService sharedService] fetchCamerasAlongRoute:route completion:^(NSArray<SpeedCamera *> *cameras, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateCameraAnnotationsOnMap];
+        });
+    }];
+}
+
+- (void)updateCameraAnnotationsOnMap {
+    if (!self.cameraAnnotations) {
+        self.cameraAnnotations = [NSMutableArray array];
+    }
+    [self.mapView removeAnnotations:self.cameraAnnotations];
+    [self.cameraAnnotations removeAllObjects];
+
+    NSArray *anns = [[SpeedCameraService sharedService] annotationsForCachedCameras];
+    if (anns.count > 0) {
+        [self.cameraAnnotations addObjectsFromArray:anns];
+        [self.mapView addAnnotations:anns];
     }
 }
 

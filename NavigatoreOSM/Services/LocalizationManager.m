@@ -87,6 +87,12 @@ static NSString *const kLanguagePreferenceKey = @"AppLanguagePreference";
             @"SEARCHING_NO_HWY": @"Ricerca itinerari senza autostrade...",
             @"SEARCHING_NO_TOLLS_NO_HWY": @"Ricerca itinerari senza pedaggi e senza autostrade...",
             @"NO_TOLLS": @"🛣️ Senza pedaggio",
+            @"SEC_TRAFFIC_VELOX": @"🚦 TRAFFICO LIVE & 📸 AUTOVELOX",
+            @"TRAFFIC_ENABLED": @"Traffico in Tempo Reale",
+            @"TOMTOM_KEY": @"Chiave API TomTom (Traffico)",
+            @"SPEED_CAMERA_ALERTS": @"Avvisi Visivi & Vocali Autovelox",
+            @"TRAFFIC_KEY_TITLE": @"Traffico in Tempo Reale",
+            @"TRAFFIC_KEY_MSG": @"Il livello del traffico è attivo ma richiede una chiave API TomTom per visualizzare il flusso in tempo reale.\n\nPuoi registrarti gratuitamente su developer.tomtom.com (2500 richieste/giorno) e inserirla nelle Impostazioni.",
 
             // Main View & Voice
             @"READY_3D": @"Navigatore pronto con visuale 3D prospettica.",
@@ -208,6 +214,12 @@ static NSString *const kLanguagePreferenceKey = @"AppLanguagePreference";
             @"SEARCHING_NO_HWY": @"Searching routes avoiding highways...",
             @"SEARCHING_NO_TOLLS_NO_HWY": @"Searching toll-free non-highway routes...",
             @"NO_TOLLS": @"🛣️ Toll-free",
+            @"SEC_TRAFFIC_VELOX": @"🚦 LIVE TRAFFIC & 📸 SPEED CAMERAS",
+            @"TRAFFIC_ENABLED": @"Real-Time Traffic Flow",
+            @"TOMTOM_KEY": @"TomTom API Key (Traffic)",
+            @"SPEED_CAMERA_ALERTS": @"Speed Camera Visual & Voice Alerts",
+            @"TRAFFIC_KEY_TITLE": @"Real-Time Traffic Flow",
+            @"TRAFFIC_KEY_MSG": @"The traffic layer is enabled but requires a TomTom API key to download live flow tiles.\n\nYou can sign up for free at developer.tomtom.com (2500 requests/day) and enter it in Settings.",
 
             // Main View & Voice
             @"READY_3D": @"Navigator ready with 3D cockpit perspective.",

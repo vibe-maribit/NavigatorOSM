@@ -23,11 +23,16 @@
         savedKey = @"";
     }
 
+    BOOL enabled = YES;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"TrafficEnabled"]) {
+        enabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"TrafficEnabled"];
+    }
+
     NSString *template = [NSString stringWithFormat:@"https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=%@", savedKey];
     self = [super initWithURLTemplate:template];
     if (self) {
         _apiKey = [savedKey copy];
-        _isEnabled = YES;
+        _isEnabled = enabled;
         self.canReplaceMapContent = NO; // Trasparente sopra OSM!
         self.maximumZ = 18;
         self.minimumZ = 6;
@@ -36,7 +41,7 @@
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 6.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.0 (iPad Mini 1; iOS 9.3.5)"
+            @"User-Agent": @"NavigatoreOSM/1.3.6 (iPad Mini 1; iOS 9.3.5; TrafficClient)"
         };
         _session = [NSURLSession sessionWithConfiguration:config];
 
@@ -45,6 +50,16 @@
         [[NSFileManager defaultManager] createDirectoryAtPath:_cacheDirectory withIntermediateDirectories:YES attributes:nil error:nil];
     }
     return self;
+}
+
+- (void)setIsEnabled:(BOOL)isEnabled {
+    _isEnabled = isEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:isEnabled forKey:@"TrafficEnabled"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (BOOL)hasValidApiKey {
+    return (self.apiKey && self.apiKey.length >= 6);
 }
 
 - (void)updateApiKey:(NSString *)apiKey {
