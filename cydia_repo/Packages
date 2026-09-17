@@ -44,13 +44,13 @@ Author: Nicola
 Section: Applications
 Icon: https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png
 Depiction: https://vibe-maribit.github.io/NavigatorOSM/
-Version: 1.3.3-2
+Version: 1.3.3-1
 Installed-Size: 396
 Filename: ./debs/com.nicola.navigatoreosm_1.3.3-1_iphoneos-arm.deb
-Size: 127962
-MD5sum: 02e80d3a2ebc623de44de215b2e47537
-SHA1: 2e48f648003a9e43b3e3682c957ca2e324457e36
-SHA256: 0567eba7846497b442585e877c708df068cd42de73147da33f7e0ef01b9407c0
+Size: 127976
+MD5sum: 9b3274a8cdee7b40115bc9ee9dd182dc
+SHA1: 1ba1b9e0887cc65de182f31f5197c5aca78d1637
+SHA256: 395f174093ba38e3fef89663d892a75864c91134a6e344430f53e7e9650daa6f
 
 Package: com.nicola.navigatoreosm
 Name: NavigatorOSM
@@ -98,11 +98,11 @@ Author: Nicola
 Section: Applications
 Icon: https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png
 Depiction: https://vibe-maribit.github.io/NavigatorOSM/
-Version: 1.3.6-1
+Version: 1.3.6-2
 Installed-Size: 444
-Filename: ./debs/com.nicola.navigatoreosm_1.3.6-1_iphoneos-arm.deb
-Size: 146866
-MD5sum: aa1d9aa0c8d6f387207d441d0a3ca430
-SHA1: 058c027c47f839e332c73ec3779f62e57f6fa0c6
-SHA256: 04b546ddf4d52989f12627d7abfb964e6591cc448c1caa46cff9de6c1b7ad4de
+Filename: ./debs/com.nicola.navigatoreosm_1.3.6-2_iphoneos-arm.deb
+Size: 147468
+MD5sum: 889ec228c02ea87ffbc5a5d1c1925a7e
+SHA1: c5729c4a75ec32c48be31d870bf8b7cbd8a0e523
+SHA256: 98a11f832776f28336c2fc5a1ed21cc9352da995cf4b92f259d10eaac9204b35
 

@@ -571,39 +571,6 @@
     [self.muteButton setTitle:(voice.isMuted ? @"🔇" : @"🔊") forState:UIControlStateNormal];
 }
 
-static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
-    if (!roadName || roadName.length == 0) return 50;
-    
-    NSString *upper = [roadName uppercaseString];
-    
-    // Autostrade: A1, A6, A10, A21, AUTOSTRADA... -> 130 km/h
-    if ([upper containsString:@"AUTOSTRADA"]) return 130;
-    NSRegularExpression *motorwayRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bA[0-9]{1,2}\\b" options:0 error:nil];
-    if ([motorwayRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
-        return 130;
-    }
-    
-    // Tangenziali, Raccordi autostradali -> 110 km/h
-    if ([upper containsString:@"TANGENZIALE"] || [upper containsString:@"SUPERSTRADA"] || [upper containsString:@"RACCORDO"]) {
-        return 110;
-    }
-    NSRegularExpression *raRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bRA[0-9]{1,2}\\b" options:0 error:nil];
-    if ([raRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
-        return 110;
-    }
-    
-    // Strade Statali, Regionali, Provinciali -> 90 km/h
-    NSRegularExpression *extraurbanRegex = [NSRegularExpression regularExpressionWithPattern:@"\\b(SS|SR|SP)[0-9]+" options:0 error:nil];
-    if ([extraurbanRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
-        return 90;
-    }
-    if ([upper containsString:@"STATALE"] || [upper containsString:@"PROVINCIALE"] || [upper containsString:@"REGIONALE"]) {
-        return 90;
-    }
-    
-    // Strade urbane (Via, Corso, Viale, Piazza, ecc.) -> 50 km/h
-    return 50;
-}
 
 - (void)cancelCurrentRoute {
     self.currentRouteRequestId++;
@@ -1306,14 +1273,23 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 - (void)updateHUDFromTrackingEngine {
     if (!self.isNavigating || !self.currentRoute) return;
 
+    // Aggiornamento limite di velocità dinamico per la strada su cui si sta attualmente transitando
+    NSUInteger roadIdx = self.trackingEngine.currentRoadStepIndex;
+    if (roadIdx < self.currentRoute.steps.count) {
+        ManeuverStep *currentRoadStep = self.currentRoute.steps[roadIdx];
+        int dynamicLimit = currentRoadStep.speedLimit;
+        if (dynamicLimit <= 0) {
+            dynamicLimit = [RoutingService deduceSpeedLimitForStep:currentRoadStep];
+        }
+        [self.speedometer setDynamicSpeedLimit:dynamicLimit];
+    }
+
+    // Aggiornamento della prossima manovra nell'HUD
     NSUInteger stepIdx = self.trackingEngine.currentStepIndex;
     if (stepIdx < self.currentRoute.steps.count) {
         ManeuverStep *targetStep = self.currentRoute.steps[stepIdx];
         CLLocationDistance distToStep = self.trackingEngine.remainingDistanceToStep;
         ManeuverStep *nextStep = (stepIdx + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[stepIdx + 1] : nil;
-
-        int dynamicLimit = DeduceSpeedLimitFromRoadName(targetStep.streetName);
-        [self.speedometer setDynamicSpeedLimit:dynamicLimit];
 
         [self.maneuverHUD updateWithManeuver:targetStep distanceToStep:distToStep nextStep:nextStep];
 

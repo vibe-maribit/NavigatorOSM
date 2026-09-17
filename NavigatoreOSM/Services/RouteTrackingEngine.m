@@ -49,6 +49,7 @@ static double InterpolateAngle(double current, double target, double factor) {
 @property (nonatomic, assign, readwrite) double currentRouteDistance;
 @property (nonatomic, assign, readwrite) double totalRouteDistance;
 @property (nonatomic, assign, readwrite) NSUInteger currentStepIndex;
+@property (nonatomic, assign, readwrite) NSUInteger currentRoadStepIndex;
 @property (nonatomic, assign, readwrite) CLLocationDistance remainingDistanceToStep;
 @property (nonatomic, assign, readwrite) CLLocationDistance remainingDistanceToDestination;
 @property (nonatomic, assign, readwrite) NSTimeInterval remainingDuration;
@@ -494,6 +495,25 @@ static double InterpolateAngle(double current, double target, double factor) {
         self.remainingDistanceToStep = MAX(0.0, stepDist - self.currentRouteDistance);
     } else {
         self.remainingDistanceToStep = 0.0;
+    }
+
+    // Determina su quale segmento stradale (step) ci troviamo attualmente
+    if (_stepCount > 0 && _stepProgress) {
+        NSUInteger roadIdx = 0;
+        for (NSUInteger s = 0; s < _stepCount; s++) {
+            if (s + 1 < _stepCount) {
+                if (self.currentRouteDistance >= _stepProgress[s].routeDistanceMeters &&
+                    self.currentRouteDistance < _stepProgress[s + 1].routeDistanceMeters) {
+                    roadIdx = s;
+                    break;
+                }
+            } else {
+                roadIdx = s;
+            }
+        }
+        self.currentRoadStepIndex = roadIdx;
+    } else {
+        self.currentRoadStepIndex = 0;
     }
 
     self.remainingDistanceToDestination = MAX(0.0, self.totalRouteDistance - self.currentRouteDistance);

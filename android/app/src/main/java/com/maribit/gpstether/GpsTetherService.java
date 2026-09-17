@@ -152,17 +152,9 @@ public class GpsTetherService extends Service implements LocationListener {
     private void registerLocationListeners() {
         if (locationManager == null) return;
         try {
-            // GPS Provider (satellitare di precisione)
+            // GPS Provider (satellitare di precisione - unico provider affidabile per navigazione auto)
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0.0f, this);
-            }
-            // Network Provider (celle/Wi-Fi veloce all'avvio)
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000, 0.0f, this);
-            }
-            // Passive Provider (intercetta posizioni generate da altre app come Google Maps)
-            if (locationManager.getAllProviders().contains(LocationManager.PASSIVE_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, 500, 0.0f, this);
             }
             // Fused Provider su Android 12+ (API 31+) se disponibile
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -170,7 +162,7 @@ public class GpsTetherService extends Service implements LocationListener {
                     locationManager.requestLocationUpdates("fused", 500, 0.0f, this);
                 }
             }
-            Log.i(TAG, "LocationListeners registrati su tutti i provider attivi");
+            Log.i(TAG, "LocationListeners registrati (solo GPS satellitare ad alta precisione)");
         } catch (Exception e) {
             Log.e(TAG, "Errore registrazione LocationManager: " + e.getMessage());
         }
@@ -204,6 +196,20 @@ public class GpsTetherService extends Service implements LocationListener {
     @Override
     public void onLocationChanged(Location loc) {
         if (loc == null) return;
+
+        // FILTRO ANTI-CELLE E ANTI-SPIKE:
+        // 1. Scarta categoricamente posizioni da celle telefoniche/Wi-Fi che generano salti di 500-1000m
+        if (LocationManager.NETWORK_PROVIDER.equals(loc.getProvider())) {
+            return;
+        }
+        // 2. Scarta fix con accuratezza peggiore di 30 metri o coordinate non valide
+        if (loc.hasAccuracy() && loc.getAccuracy() > 30.0f) {
+            return;
+        }
+        if (loc.getLatitude() == 0.0 && loc.getLongitude() == 0.0) {
+            return;
+        }
+
         lastLocation = loc;
 
         if (broadcaster != null) {
@@ -262,7 +268,7 @@ public class GpsTetherService extends Service implements LocationListener {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("🛰️ GPS Tethering Attivo")
+                .setContentTitle("🛰️ GPS Tether v1.3.6 Attivo")
                 .setContentText(contentText)
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setContentIntent(pendingIntent)

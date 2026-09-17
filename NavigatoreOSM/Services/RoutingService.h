@@ -6,6 +6,8 @@
 
 @property (nonatomic, copy) NSString *instruction;
 @property (nonatomic, copy) NSString *streetName;
+@property (nonatomic, copy) NSString *ref;
+@property (nonatomic, assign) int speedLimit;
 @property (nonatomic, copy) NSString *type;
 @property (nonatomic, copy) NSString *modifier;
 @property (nonatomic, assign) CLLocationDistance distance;
@@ -74,6 +76,9 @@ typedef void (^RoutesCompletionBlock)(NSArray<RouteInfo *> *routes, NSError *err
                         to:(CLLocationCoordinate2D)destination
                destinationTitle:(NSString *)title
                 completion:(RouteCompletionBlock)completion;
+
+/// Calcola o deduce il limite di velocità appropriato per un passaggio stradale
++ (int)deduceSpeedLimitForStep:(ManeuverStep *)step;
 
 @end
 

@@ -52,6 +52,56 @@
     return self;
 }
 
+static int DeduceSpeedLimitForStep(NSString *ref, NSString *streetName, CLLocationDistance distance, NSTimeInterval duration) {
+    NSString *combined = [NSString stringWithFormat:@"%@ %@", ref ?: @"", streetName ?: @""];
+    NSString *upper = [combined uppercaseString];
+
+    // 1. Autostrade (A1, A4, A14, AUTOSTRADA, ecc.) -> 130 km/h
+    if ([upper containsString:@"AUTOSTRADA"]) return 130;
+    NSRegularExpression *motorwayRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bA[0-9]{1,3}\\b" options:0 error:nil];
+    if ([motorwayRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
+        return 130;
+    }
+
+    // 2. Raccordi Autostradali, Tangenziali, Superstrade -> 110 km/h
+    if ([upper containsString:@"TANGENZIALE"] || [upper containsString:@"SUPERSTRADA"] || [upper containsString:@"RACCORDO"]) {
+        return 110;
+    }
+    NSRegularExpression *raRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bRA[0-9]{1,2}\\b" options:0 error:nil];
+    if ([raRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
+        return 110;
+    }
+
+    // 3. Strade Statali, Regionali, Provinciali -> 90 km/h
+    NSRegularExpression *extraurbanRegex = [NSRegularExpression regularExpressionWithPattern:@"\\b(SS|SR|SP)[0-9]+" options:0 error:nil];
+    if ([extraurbanRegex numberOfMatchesInString:upper options:0 range:NSMakeRange(0, upper.length)] > 0) {
+        return 90;
+    }
+    if ([upper containsString:@"STATALE"] || [upper containsString:@"PROVINCIALE"] || [upper containsString:@"REGIONALE"]) {
+        return 90;
+    }
+
+    // 4. Se il nome non specifica la tipologia (es. tratto senza nome o con solo numero uscita),
+    // usiamo la velocità teorica stimata dal routing engine (distance / duration)
+    if (duration > 1.0 && distance > 50.0) {
+        double modeledSpeedKmh = (distance / duration) * 3.6;
+        if (modeledSpeedKmh >= 98.0) {
+            return 130;
+        } else if (modeledSpeedKmh >= 78.0) {
+            return 110;
+        } else if (modeledSpeedKmh >= 60.0) {
+            return 90;
+        } else if (modeledSpeedKmh >= 45.0) {
+            return 70;
+        } else if (modeledSpeedKmh >= 25.0) {
+            return 50;
+        }
+    }
+
+    // Default per viabilità ordinaria/urbana
+    return 50;
+}
+
 static NSString *FormatManeuverLocalized(NSString *type, NSString *modifier, NSString *name) {
     BOOL isIt = [[LocalizationManager sharedManager] isItalian];
     NSString *base = @"";
@@ -196,6 +246,11 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
                 step.distance = [raw[@"distance"] doubleValue];
                 step.duration = [raw[@"duration"] doubleValue];
                 step.streetName = raw[@"name"] ?: @"";
+                step.ref = raw[@"ref"] ?: @"";
+                if (step.streetName.length == 0 && step.ref.length > 0) {
+                    step.streetName = step.ref;
+                }
+                step.speedLimit = DeduceSpeedLimitForStep(step.ref, step.streetName, step.distance, step.duration);
 
                 if (step.streetName.length > 2) {
                     double currentDist = [roadDistances[step.streetName] doubleValue];
@@ -243,12 +298,12 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         BOOL hasHwy = NO;
         BOOL hasToll = NO;
         for (ManeuverStep *st in steps) {
-            NSString *lower = [st.streetName lowercaseString];
+            NSString *lower = [NSString stringWithFormat:@"%@ %@", st.ref ?: @"", st.streetName ?: @""].lowercaseString;
             if ([lower containsString:@"autostrada"] || [lower containsString:@"tangenziale"] ||
                 [lower containsString:@"pedaggio"] || [lower containsString:@"toll"] ||
-                [lower hasPrefix:@"a1"] || [lower hasPrefix:@"a4"] || [lower hasPrefix:@"a8"] ||
-                [lower hasPrefix:@"a7"] || [lower hasPrefix:@"a9"] || [lower hasPrefix:@"a14"] ||
-                [lower hasPrefix:@"a22"] || [lower hasPrefix:@"a35"]) {
+                [lower containsString:@"a1"] || [lower containsString:@"a4"] || [lower containsString:@"a8"] ||
+                [lower containsString:@"a7"] || [lower containsString:@"a9"] || [lower containsString:@"a14"] ||
+                [lower containsString:@"a22"] || [lower containsString:@"a35"] || st.speedLimit == 130) {
                 hasHwy = YES;
                 hasToll = YES;
             }
@@ -458,6 +513,8 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
         } else {
             step.streetName = @"";
         }
+        step.ref = @"";
+        step.speedLimit = DeduceSpeedLimitForStep(step.ref, step.streetName, step.distance, step.duration);
 
         if (step.streetName.length > 2) {
             double cur = [roadDistances[step.streetName] doubleValue];
@@ -731,6 +788,12 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
             if (completion) completion(routes[0], nil);
         }
     }];
+}
+
++ (int)deduceSpeedLimitForStep:(ManeuverStep *)step {
+    if (!step) return 50;
+    if (step.speedLimit > 0) return step.speedLimit;
+    return DeduceSpeedLimitForStep(step.ref, step.streetName, step.distance, step.duration);
 }
 
 @end

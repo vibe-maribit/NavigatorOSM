@@ -45,6 +45,9 @@
 /// Indice della manovra (step) attuale
 @property (nonatomic, assign, readonly) NSUInteger currentStepIndex;
 
+/// Indice del passaggio stradale su cui si sta attualmente transitando
+@property (nonatomic, assign, readonly) NSUInteger currentRoadStepIndex;
+
 /// Distanza stradale rimanente in metri verso la manovra attuale
 @property (nonatomic, assign, readonly) CLLocationDistance remainingDistanceToStep;
 

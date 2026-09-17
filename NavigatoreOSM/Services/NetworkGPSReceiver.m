@@ -270,17 +270,22 @@
             self->_tcpSocketFd = sock;
             NSLog(@"[NetworkGPSReceiver] Connesso con successo al server TCP %@:%ld", targetHost, (long)port);
 
+            NSMutableString *tcpLineBuffer = [NSMutableString string];
             char buffer[2048];
             while (self->_tcpShouldRun && self->_tcpSocketFd >= 0) {
                 ssize_t bytesRead = recv(self->_tcpSocketFd, buffer, sizeof(buffer) - 1, 0);
                 if (bytesRead > 0) {
                     buffer[bytesRead] = '\0';
-                    NSString *stream = [NSString stringWithUTF8String:buffer];
-                    if (stream) {
-                        NSArray *lines = [stream componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
-                        for (NSString *line in lines) {
-                            if (line.length > 0) {
-                                [self processReceivedPayload:line senderIP:targetHost streamType:@"TCP"];
+                    NSString *chunk = [NSString stringWithUTF8String:buffer];
+                    if (chunk) {
+                        [tcpLineBuffer appendString:chunk];
+                        NSRange newlineRange;
+                        while ((newlineRange = [tcpLineBuffer rangeOfCharacterFromSet:[NSCharacterSet newlineCharacterSet]]).location != NSNotFound) {
+                            NSString *line = [tcpLineBuffer substringToIndex:newlineRange.location];
+                            [tcpLineBuffer deleteCharactersInRange:NSMakeRange(0, newlineRange.location + 1)];
+                            NSString *trimmedLine = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                            if (trimmedLine.length > 0) {
+                                [self processReceivedPayload:trimmedLine senderIP:targetHost streamType:@"TCP"];
                             }
                         }
                     }
@@ -352,6 +357,11 @@
 
     if (!parsedLocation) return;
 
+    // Filtro di accuratezza: scarta fix scadenti (es. triangolazione celle 100m+)
+    if (parsedLocation.horizontalAccuracy > 35.0) {
+        return;
+    }
+
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
 
     // Filtro di de-duplicazione tra stream TCP e UDP arrivati in parallelo
@@ -360,6 +370,20 @@
         if (diff < 1.0) {
             // È lo stesso pacchetto ricevuto via entrambi i canali: scartiamo il doppione
             return;
+        }
+    }
+
+    // Filtro Anti-Teletrasporto / Salti Anomali:
+    // Se la distanza percorsa rispetto al fix precedente richiede una velocità fisicamente impossibile,
+    // scartiamo il fix anomalo (evita picchi spuri di 500-1000 km/h dovuti a cambi di antenna)
+    if (_lastDispatchedLocation) {
+        NSTimeInterval dt = now - _lastDispatchTime;
+        if (dt > 0.001) {
+            CLLocationDistance dist = [parsedLocation distanceFromLocation:_lastDispatchedLocation];
+            if ((dt < 1.0 && dist > 75.0) || (dist / dt > 65.0)) {
+                NSLog(@"[NetworkGPSReceiver] Scartato fix teletrasporto: %.1fm in %.2fs (%.1f m/s)", dist, dt, dist / dt);
+                return;
+            }
         }
     }
 
@@ -376,7 +400,8 @@
             double impliedSpeed = dist / dt;
 
             // Se il GPS ha mandato velocità 0 (bug NMEA o glitch) ma l'auto si è spostata di 15m in 0.5s:
-            if (finalSpeed < 0.5 && impliedSpeed > 2.8) {
+            // Limitiamo rigorosamente impliedSpeed a 45.0 m/s (~162 km/h) per evitare qualsiasi picco
+            if (finalSpeed < 0.5 && impliedSpeed > 2.2 && impliedSpeed <= 45.0) {
                 finalSpeed = impliedSpeed;
             }
             // Se la direzione non è specificata, deducila dallo spostamento
@@ -384,6 +409,24 @@
                 finalHeading = [self calculateHeadingFrom:_lastDispatchedLocation.coordinate to:parsedLocation.coordinate];
             }
         }
+    }
+
+    // Limitatore di accelerazione: evita sbalzi istantanei non fisici tra un fix e l'altro
+    if (_lastDispatchedLocation && _lastDispatchedLocation.speed >= 0) {
+        NSTimeInterval dt = now - _lastDispatchTime;
+        if (dt > 0.1 && dt < 3.0) {
+            double maxAllowedSpeed = _lastDispatchedLocation.speed + (12.0 * dt);
+            if (finalSpeed > maxAllowedSpeed && finalSpeed > 10.0) {
+                finalSpeed = maxAllowedSpeed;
+            }
+        }
+    }
+
+    // Tetto massimo assoluto per autoveicoli: 64 m/s (~230 km/h)
+    if (finalSpeed > 64.0) {
+        finalSpeed = 64.0;
+    } else if (finalSpeed < 0.0) {
+        finalSpeed = 0.0;
     }
 
     // Ricostruisci il CLLocation validato
@@ -453,15 +496,22 @@
 }
 
 - (CLLocation *)parseCSVPayload:(NSString *)csvStr outHeading:(CLLocationDirection *)outHeading {
+    if (csvStr.length == 0) return nil;
+    unichar c = [csvStr characterAtIndex:0];
+    if (!isdigit(c) && c != '-' && c != '+') return nil;
+
     NSArray *parts = [csvStr componentsSeparatedByString:@","];
     if (parts.count < 2) return nil;
 
     double lat = [parts[0] doubleValue];
     double lon = [parts[1] doubleValue];
+
+    if (fabs(lat) < 0.001 && fabs(lon) < 0.001) return nil;
+    if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) return nil;
+
     double speed = (parts.count > 2) ? ([parts[2] doubleValue] / 3.6) : -1.0;
     double bearing = (parts.count > 3) ? [parts[3] doubleValue] : -1.0;
 
-    if (lat == 0 && lon == 0) return nil;
     if (outHeading) *outHeading = bearing;
 
     return [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(lat, lon)

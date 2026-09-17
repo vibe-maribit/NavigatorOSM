@@ -15,7 +15,6 @@
 @property (nonatomic, strong) UITextField *tollGuruApiKeyTextField;
 @property (nonatomic, strong) UITextField *portTextField;
 @property (nonatomic, strong) UITextField *ipTextField;
-@property (nonatomic, strong) UISegmentedControl *modeSegment;
 @property (nonatomic, strong) UISwitch *voiceSwitch;
 @property (nonatomic, strong) UISegmentedControl *themeSegment;
 
@@ -85,7 +84,7 @@
         NSString *ipLocal = [gps localIPAddress];
         NSString *status;
         if (gps.isRunning) {
-            status = gps.isTCPClientMode ? NLString(@"CONNECTED_TCP", @"Connesso TCP") : NLString(@"LISTENING_UDP", @"In ascolto UDP");
+            status = gps.isDualMode ? NLString(@"CONNECTED_DUAL", @"Duale UDP+TCP") : (gps.isTCPClientMode ? NLString(@"CONNECTED_TCP", @"Connesso TCP") : NLString(@"LISTENING_UDP", @"In ascolto UDP"));
         } else {
             status = NLString(@"STOPPED", @"Fermo");
         }
@@ -135,9 +134,7 @@
         gps.tcpHost = ip;
     }
 
-    if (self.modeSegment) {
-        gps.isTCPClientMode = (self.modeSegment.selectedSegmentIndex == 1);
-    }
+    gps.isDualMode = YES;
 
     if (self.themeSegment) {
         [[NSUserDefaults standardUserDefaults] setInteger:self.themeSegment.selectedSegmentIndex forKey:@"MapThemeIndex"];
@@ -250,18 +247,6 @@
     [self.tableView reloadData];
 }
 
-- (void)applyGPSModeChange:(UISegmentedControl *)sender {
-    NetworkGPSReceiver *gps = [NetworkGPSReceiver sharedReceiver];
-    gps.isTCPClientMode = (sender.selectedSegmentIndex == 1);
-    NSInteger port = [self.portTextField.text integerValue] ?: gps.port;
-    NSString *host = self.ipTextField.text.length > 0 ? self.ipTextField.text : gps.tcpHost;
-
-    if (gps.isTCPClientMode) {
-        [gps connectToTCPServer:host port:port];
-    } else {
-        [gps startListeningOnPort:port];
-    }
-}
 
 - (void)copyCydiaRepoURL {
     [UIPasteboard generalPasteboard].string = @"https://vibe-maribit.github.io/NavigatorOSM/";
@@ -283,7 +268,7 @@
         case 0: return 3; // Versione App, Data Build, Architettura
         case 1: return 1; // Lingua Interfaccia
         case 2: return 6; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT, TollGuru Key, TollGuru Status
-        case 3: return 5; // Ricevitore GPS di Rete
+        case 3: return 4; // Ricevitore GPS di Rete (Porta, IP Server, Diagnostica, Ultima Posizione)
         case 4: return 2; // Repository Cydia OTA
         case 5: return 1; // Guida Vocale
         case 6: return 1; // Stile Mappa
@@ -454,18 +439,9 @@
             }
         }
     }
-    // SEZIONE 3: GPS Rete
+    // SEZIONE 3: GPS Rete (Ricezione simultanea duale UDP Broadcast + TCP Client)
     else if (indexPath.section == 3) {
         if (indexPath.row == 0) {
-            cell.textLabel.text = NLString(@"PROTOCOL", @"Protocollo Ricezione");
-            if (!self.modeSegment) {
-                self.modeSegment = [[UISegmentedControl alloc] initWithItems:@[@"UDP Broadcast", @"TCP Client"]];
-                self.modeSegment.selectedSegmentIndex = gps.isTCPClientMode ? 1 : 0;
-                [self.modeSegment addTarget:self action:@selector(applyGPSModeChange:) forControlEvents:UIControlEventValueChanged];
-                self.modeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
-            }
-            cell.accessoryView = self.modeSegment;
-        } else if (indexPath.row == 1) {
             cell.textLabel.text = NLString(@"PORT", @"Porta Ricezione (Default 8888)");
             if (!self.portTextField) {
                 self.portTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 90, 32)];
@@ -477,8 +453,8 @@
                 self.portTextField.layer.cornerRadius = 6.0;
             }
             cell.accessoryView = self.portTextField;
-        } else if (indexPath.row == 2) {
-            cell.textLabel.text = NLString(@"SERVER_IP", @"IP Server Android (per TCP)");
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = NLString(@"SERVER_IP", @"IP Server Android (Hotspot / TCP)");
             if (!self.ipTextField) {
                 self.ipTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 130, 32)];
                 NSString *gw = [NetworkGPSReceiver defaultGatewayIP];
@@ -490,13 +466,13 @@
                 self.ipTextField.layer.cornerRadius = 6.0;
             }
             cell.accessoryView = self.ipTextField;
-        } else if (indexPath.row == 3) {
+        } else if (indexPath.row == 2) {
             // Box Diagnostica Live
             cell.textLabel.text = NLString(@"DIAGNOSTICS", @"Diagnostica Ricezione");
             NSString *ipLocal = [gps localIPAddress];
             NSString *status;
             if (gps.isRunning) {
-                status = gps.isTCPClientMode ? NLString(@"CONNECTED_TCP", @"Connesso TCP") : NLString(@"LISTENING_UDP", @"In ascolto UDP");
+                status = gps.isDualMode ? NLString(@"CONNECTED_DUAL", @"Duale UDP+TCP") : (gps.isTCPClientMode ? NLString(@"CONNECTED_TCP", @"Connesso TCP") : NLString(@"LISTENING_UDP", @"In ascolto UDP"));
             } else {
                 status = NLString(@"STOPPED", @"Fermo");
             }
@@ -506,7 +482,7 @@
                 ? [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0]
                 : [UIColor colorWithRed:1.0 green:0.7 blue:0.2 alpha:1.0];
             self.diagStatusLabel = cell.detailTextLabel;
-        } else if (indexPath.row == 4) {
+        } else if (indexPath.row == 3) {
             cell.textLabel.text = NLString(@"LAST_LOCATION", @"Ultima Posizione Ricevuta");
             if (gps.lastLocation) {
                 cell.detailTextLabel.text = [NSString stringWithFormat:@"%.4f, %.4f (±%.0fm)",

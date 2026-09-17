@@ -25,7 +25,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Condivisione GPS per iPad NavigatoreOSM"
+            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.6"
             android:textColor="#90A4AE"
             android:textSize="14sp"
             android:layout_marginTop="4dp" />

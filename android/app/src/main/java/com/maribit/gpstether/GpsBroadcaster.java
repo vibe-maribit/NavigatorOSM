@@ -74,41 +74,34 @@ public class GpsBroadcaster {
 
         executor.execute(() -> {
             try {
-                // 1. Prepara Payload JSON nativo
+                // 1. Prepara Payload JSON nativo pulito
+                float speed = loc.hasSpeed() ? loc.getSpeed() : -1.0f;
+                float bearing = loc.hasBearing() ? loc.getBearing() : -1.0f;
+                double alt = loc.hasAltitude() ? loc.getAltitude() : 0.0;
+                float acc = loc.hasAccuracy() ? loc.getAccuracy() : 3.5f;
+
                 String json = String.format(Locale.US,
                         "{\"lat\": %.6f, \"lon\": %.6f, \"speed\": %.2f, \"bearing\": %.1f, \"alt\": %.1f, \"acc\": %.1f, \"time\": %d}\n",
                         loc.getLatitude(), loc.getLongitude(),
-                        loc.getSpeed(), loc.getBearing(),
-                        loc.getAltitude(), loc.getAccuracy(),
+                        speed, bearing,
+                        alt, acc,
                         loc.getTime());
 
-                // 2. Prepara Sentenza NMEA standard
-                String nmea = NmeaUtils.formatGPRMC(loc);
-
                 byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
-                byte[] nmeaBytes = nmea.getBytes(StandardCharsets.UTF_8);
 
-                // 3. Invia via UDP Broadcast globale e subnet hotspot
+                // 2. Invia via UDP Broadcast globale
                 if (udpSocket != null && !udpSocket.isClosed()) {
                     InetAddress globalBroadcast = InetAddress.getByName("255.255.255.255");
                     udpSocket.send(new DatagramPacket(jsonBytes, jsonBytes.length, globalBroadcast, port));
-                    udpSocket.send(new DatagramPacket(nmeaBytes, nmeaBytes.length, globalBroadcast, port));
-
-                    // Invia anche a broadcast hotspot tipico Android (192.168.43.255)
-                    try {
-                        InetAddress hotspotBroadcast = InetAddress.getByName("192.168.43.255");
-                        udpSocket.send(new DatagramPacket(jsonBytes, jsonBytes.length, hotspotBroadcast, port));
-                    } catch (Exception ignored) {}
                 }
 
-                // 4. Invia ai client TCP connessi
+                // 3. Invia ai client TCP connessi
                 synchronized (connectedTcpClients) {
                     List<Socket> deadClients = new ArrayList<>();
                     for (Socket s : connectedTcpClients) {
                         try {
                             OutputStream os = s.getOutputStream();
                             os.write(jsonBytes);
-                            os.write(nmeaBytes);
                             os.flush();
                         } catch (IOException e) {
                             deadClients.add(s);
