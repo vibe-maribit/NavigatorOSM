@@ -1,6 +1,7 @@
 #import "RoutingService.h"
 #import "LocalizationManager.h"
 #import "FuelPriceService.h"
+#import "TollGuruService.h"
 
 @implementation ManeuverStep
 @end
@@ -10,7 +11,9 @@
 - (void)updateTripCosts {
     FuelPriceService *fuel = [FuelPriceService sharedService];
     self.fuelCost = [fuel fuelCostForDistance:self.totalDistance];
-    self.tollCost = [fuel estimatedTollCostForDistance:self.totalDistance hasTolls:self.hasToll];
+    if (!self.isTollCostExact) {
+        self.tollCost = [fuel estimatedTollCostForDistance:self.totalDistance hasTolls:self.hasToll];
+    }
     self.totalTripCost = self.fuelCost + self.tollCost;
 }
 
@@ -281,11 +284,21 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
     [routes addObject:newRoute];
 }
 
-- (void)reindexAndClassifyRoutes:(NSMutableArray<RouteInfo *> *)results {
+- (void)reindexAndClassifyRoutes:(NSMutableArray<RouteInfo *> *)results
+                      avoidTolls:(BOOL)avoidTolls
+                   avoidHighways:(BOOL)avoidHighways {
     if (results.count == 0) return;
 
-    // Ordina per durata crescente (il più veloce per primo)
+    // Ordina per rispetto delle preferenze utente, poi per durata crescente
     [results sortUsingComparator:^NSComparisonResult(RouteInfo *r1, RouteInfo *r2) {
+        if (avoidTolls) {
+            if (!r1.hasToll && r2.hasToll) return NSOrderedAscending;
+            if (r1.hasToll && !r2.hasToll) return NSOrderedDescending;
+        }
+        if (avoidHighways) {
+            if (!r1.hasHighway && r2.hasHighway) return NSOrderedAscending;
+            if (r1.hasHighway && !r2.hasHighway) return NSOrderedDescending;
+        }
         if (r1.totalDuration < r2.totalDuration) return NSOrderedAscending;
         if (r1.totalDuration > r2.totalDuration) return NSOrderedDescending;
         return NSOrderedSame;
@@ -307,7 +320,11 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
         BOOL isIt = [[LocalizationManager sharedManager] isItalian];
 
         // Assegna badge strategico
-        if (fabs(r.totalDuration - minDuration) < 15.0 && fabs(r.totalDistance - minDistance) < 100.0) {
+        if (avoidTolls && !r.hasToll) {
+            r.badgeTitle = NLString(@"BADGE_NO_TOLLS", @"🌿 No Pedaggio");
+        } else if (avoidHighways && !r.hasHighway) {
+            r.badgeTitle = NLString(@"BADGE_NO_HIGHWAYS", @"🍃 No Autostrada");
+        } else if (fabs(r.totalDuration - minDuration) < 15.0 && fabs(r.totalDistance - minDistance) < 100.0) {
             r.badgeTitle = NLString(@"BADGE_OPTIMAL", @"⭐ Ottimale");
         } else if (fabs(r.totalDuration - minDuration) < 15.0) {
             r.badgeTitle = NLString(@"BADGE_FASTEST", @"🚀 Più Veloce");
@@ -335,87 +352,21 @@ static NSString *EvaluateTrafficDescription(NSDictionary *leg) {
     }
 }
 
+- (void)reindexAndClassifyRoutes:(NSMutableArray<RouteInfo *> *)results {
+    [self reindexAndClassifyRoutes:results avoidTolls:NO avoidHighways:NO];
+}
+
 - (void)enrichWithAlternativeCorridors:(NSMutableArray<RouteInfo *> *)routes
                                  start:(CLLocationCoordinate2D)start
                            destination:(CLLocationCoordinate2D)destination
                                  title:(NSString *)title
                            offsetRatio:(double)offsetRatio
                             completion:(void (^)(NSArray<RouteInfo *> *finalRoutes))done {
-    // Se abbiamo già 4 o più itinerari distinti, completiamo subito
-    if (routes.count >= 4) {
-        done(routes);
-        return;
-    }
-
-    double dLat = destination.latitude - start.latitude;
-    double dLon = destination.longitude - start.longitude;
-    double len = sqrt(dLat * dLat + dLon * dLon);
-
-    // Se la distanza lineare è minore di circa 10 km, non ha senso cercare corridoi autostradali alternativi
-    if (len < 0.10) {
-        done(routes);
-        return;
-    }
-
-    double midLat = (start.latitude + destination.latitude) / 2.0;
-    double midLon = (start.longitude + destination.longitude) / 2.0;
-
-    // Vettore perpendicolare normalizzato
-    double pLat = dLon / len;
-    double pLon = -dLat / len;
-
-    // Corridoi laterali modulati dal parametro offsetRatio (default 22%)
-    double ratio = (fabs(offsetRatio) > 0.05) ? offsetRatio : 0.22;
-    double offset = len * ratio;
-    CLLocationCoordinate2D via1 = CLLocationCoordinate2DMake(midLat + pLat * offset, midLon + pLon * offset);
-    CLLocationCoordinate2D via2 = CLLocationCoordinate2DMake(midLat - pLat * offset, midLon - pLon * offset);
-
-    dispatch_group_t group = dispatch_group_create();
-
-    // Query Corridoio Laterale 1
-    dispatch_group_enter(group);
-    NSString *via1UrlStr = [NSString stringWithFormat:
-                            @"http://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&annotations=true",
-                            start.longitude, start.latitude,
-                            via1.longitude, via1.latitude,
-                            destination.longitude, destination.latitude];
-    NSURLSessionDataTask *t1 = [self.session dataTaskWithURL:[NSURL URLWithString:via1UrlStr] completionHandler:^(NSData *d1, NSURLResponse *r1, NSError *e1) {
-        if (!e1 && d1) {
-            NSArray<RouteInfo *> *extra1 = [self parseRoutesData:d1 destination:destination title:title error:nil];
-            if (extra1.count > 0) {
-                @synchronized (routes) {
-                    [self appendUniqueRoute:extra1[0] toRoutes:routes];
-                }
-            }
-        }
-        dispatch_group_leave(group);
-    }];
-    [t1 resume];
-
-    // Query Corridoio Laterale 2
-    dispatch_group_enter(group);
-    NSString *via2UrlStr = [NSString stringWithFormat:
-                            @"http://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&annotations=true",
-                            start.longitude, start.latitude,
-                            via2.longitude, via2.latitude,
-                            destination.longitude, destination.latitude];
-    NSURLSessionDataTask *t2 = [self.session dataTaskWithURL:[NSURL URLWithString:via2UrlStr] completionHandler:^(NSData *d2, NSURLResponse *r2, NSError *e2) {
-        if (!e2 && d2) {
-            NSArray<RouteInfo *> *extra2 = [self parseRoutesData:d2 destination:destination title:title error:nil];
-            if (extra2.count > 0) {
-                @synchronized (routes) {
-                    [self appendUniqueRoute:extra2[0] toRoutes:routes];
-                }
-            }
-        }
-        dispatch_group_leave(group);
-    }];
-    [t2 resume];
-
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        [self reindexAndClassifyRoutes:routes];
-        done(routes);
-    });
+    // Non inventiamo waypoint perpendicolari arbitrari in mezzo ai campi/boschi
+    // che costringevano il motore a deviazioni illogiche.
+    // Usiamo unicamente le alternative reali fornite dal grafo stradale OSRM/Valhalla.
+    [self reindexAndClassifyRoutes:routes];
+    if (done) done(routes);
 }
 
 static NSArray<NSValue *> *DecodePolyline6(NSString *encoded) {
@@ -575,6 +526,8 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
 - (NSArray<RouteInfo *> *)parseValhallaResponseData:(NSData *)data
                                         destination:(CLLocationCoordinate2D)destination
                                               title:(NSString *)title
+                                         avoidTolls:(BOOL)avoidTolls
+                                      avoidHighways:(BOOL)avoidHighways
                                               error:(NSError **)outError {
     NSError *jsonError = nil;
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
@@ -607,7 +560,7 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
         return nil;
     }
 
-    [self reindexAndClassifyRoutes:results];
+    [self reindexAndClassifyRoutes:results avoidTolls:avoidTolls avoidHighways:avoidHighways];
     return results;
 }
 
@@ -642,10 +595,11 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
             @"costing_options": @{
                 @"auto": @{
                     @"use_highways": avoidHighways ? @(0.0) : @(1.0),
-                    @"use_tolls": avoidTolls ? @(0.0) : @(1.0)
+                    @"use_tolls": avoidTolls ? @(0.0) : @(1.0),
+                    @"toll_booth_penalty": avoidTolls ? @(2000.0) : @(0.0)
                 }
             },
-            @"alternates": @(2),
+            @"alternates": @(3),
             @"directions_options": @{
                 @"units": @"kilometers",
                 @"language": isIt ? @"it-IT" : @"en-US"
@@ -658,9 +612,10 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
         NSURLSessionDataTask *vTask = [self.session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
             if (!err && data) {
                 NSError *parseErr = nil;
-                NSArray<RouteInfo *> *valhallaRoutes = [weakSelf parseValhallaResponseData:data destination:destination title:title error:&parseErr];
+                NSArray<RouteInfo *> *valhallaRoutes = [weakSelf parseValhallaResponseData:data destination:destination title:title avoidTolls:avoidTolls avoidHighways:avoidHighways error:&parseErr];
                 if (valhallaRoutes.count > 0) {
                     NSLog(@"[RoutingService] Valhalla ha calcolato %lu itinerari con successo", (unsigned long)valhallaRoutes.count);
+                    [[TollGuruService sharedService] requestTollForRoutes:valhallaRoutes from:start to:destination];
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (completion) completion(valhallaRoutes, nil);
                     });
@@ -700,11 +655,11 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
                              destination.longitude, destination.latitude];
 
     NSString *primaryUrlStr = [NSString stringWithFormat:
-                              @"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=true&annotations=true",
+                              @"http://router.project-osrm.org/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=3&annotations=true",
                               coordsParam];
 
     NSString *fallbackUrlStr = [NSString stringWithFormat:
-                               @"http://routing.openstreetmap.de/routed-car/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=true&annotations=true",
+                               @"http://routing.openstreetmap.de/routed-car/route/v1/driving/%@?overview=full&geometries=geojson&steps=true&alternatives=3&annotations=true",
                                coordsParam];
 
     NSLog(@"[RoutingService] Richiesta itinerari OSRM da (%.4f, %.4f) a (%.4f, %.4f) con offset %.2f",
@@ -720,6 +675,7 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
                 NSMutableArray<RouteInfo *> *routesMut = [parsed mutableCopy];
                 [weakSelf enrichWithAlternativeCorridors:routesMut start:start destination:destination title:title offsetRatio:offsetRatio completion:^(NSArray<RouteInfo *> *finalRoutes) {
                     NSLog(@"[RoutingService] Itinerari finali OSRM calcolati: %lu percorsi", (unsigned long)finalRoutes.count);
+                    [[TollGuruService sharedService] requestTollForRoutes:finalRoutes from:start to:destination];
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (completion) completion(finalRoutes, nil);
                     });
@@ -741,6 +697,7 @@ static MKPolyline *PolylineFromCoords(NSArray<NSValue *> *coordsArray) {
                     NSMutableArray<RouteInfo *> *routesMut2 = [parsed2 mutableCopy];
                     [weakSelf enrichWithAlternativeCorridors:routesMut2 start:start destination:destination title:title offsetRatio:offsetRatio completion:^(NSArray<RouteInfo *> *finalRoutes2) {
                         NSLog(@"[RoutingService] Itinerari finali secondario: %lu percorsi", (unsigned long)finalRoutes2.count);
+                        [[TollGuruService sharedService] requestTollForRoutes:finalRoutes2 from:start to:destination];
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if (completion) completion(finalRoutes2, nil);
                         });

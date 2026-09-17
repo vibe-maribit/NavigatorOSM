@@ -33,6 +33,7 @@
 @property (nonatomic, assign) double fuelCost;
 @property (nonatomic, assign) double tollCost;
 @property (nonatomic, assign) double totalTripCost;
+@property (nonatomic, assign) BOOL isTollCostExact;
 
 - (void)updateTripCosts;
 - (NSString *)formattedCostSummary;

@@ -1,5 +1,7 @@
 #import "RouteSelectorView.h"
 #import "../Services/LocalizationManager.h"
+#import "../Services/FuelPriceService.h"
+#import "../Services/TollGuruService.h"
 
 @interface RouteSelectorView ()
 
@@ -127,6 +129,14 @@
                                                  selector:@selector(handleLanguageChanged)
                                                      name:kAppLanguagePreferenceChangedNotification
                                                    object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handlePricesUpdated)
+                                                     name:kTollPricesUpdatedNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handlePricesUpdated)
+                                                     name:kFuelPricesUpdatedNotification
+                                                   object:nil];
     }
     return self;
 }
@@ -253,6 +263,31 @@
     } else {
         self.costSummaryLabel.text = @"";
     }
+}
+
+- (void)handlePricesUpdated {
+    for (NSUInteger i = 0; i < self.routes.count; i++) {
+        RouteInfo *r = self.routes[i];
+        [r updateTripCosts];
+        if (i < self.routeButtons.count) {
+            UIButton *btn = self.routeButtons[i];
+            int mins = (int)ceil(r.totalDuration / 60.0);
+            NSString *timeStr = [NSString stringWithFormat:@"%d min", mins];
+            NSString *distStr = (r.totalDistance > 1000) ? [NSString stringWithFormat:@"%.1f km", r.totalDistance / 1000.0]
+                                                         : [NSString stringWithFormat:@"%d m", (int)r.totalDistance];
+
+            NSString *badge = r.badgeTitle ?: @"Itinerario";
+            NSString *roads = r.routeSummary ?: @"";
+
+            NSString *costStr = (r.tollCost > 0.05)
+                ? [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ %.2f€", r.fuelCost, r.tollCost]
+                : [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ 0€", r.fuelCost];
+
+            NSString *title = [NSString stringWithFormat:@"%@\n%@ • %@\n%@\n%@", badge, timeStr, distStr, costStr, roads];
+            [btn setTitle:title forState:UIControlStateNormal];
+        }
+    }
+    [self updateCostSummary];
 }
 
 - (void)setRoutes:(NSArray<RouteInfo *> *)routes {

@@ -19,6 +19,7 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Services/VoiceGuidanceService.m \
                       NavigatoreOSM/Services/LocalizationManager.m \
                       NavigatoreOSM/Services/NetworkGPSReceiver.m \
+                      NavigatoreOSM/Services/TollGuruService.m \
                       NavigatoreOSM/Views/ManeuverHUDView.m \
                       NavigatoreOSM/Views/ModernTripBarView.m \
                       NavigatoreOSM/Views/SpeedometerView.m \

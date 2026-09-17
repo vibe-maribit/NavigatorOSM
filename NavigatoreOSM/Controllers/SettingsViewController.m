@@ -3,6 +3,7 @@
 #import "Services/VoiceGuidanceService.h"
 #import "Services/LocalizationManager.h"
 #import "Services/FuelPriceService.h"
+#import "Services/TollGuruService.h"
 
 @interface SettingsViewController () <UITextFieldDelegate>
 
@@ -11,6 +12,7 @@
 @property (nonatomic, strong) UISegmentedControl *fuelTypeSegment;
 @property (nonatomic, strong) UITextField *consumptionTextField;
 @property (nonatomic, strong) UITextField *priceTextField;
+@property (nonatomic, strong) UITextField *tollGuruApiKeyTextField;
 @property (nonatomic, strong) UITextField *portTextField;
 @property (nonatomic, strong) UITextField *ipTextField;
 @property (nonatomic, strong) UISegmentedControl *modeSegment;
@@ -20,6 +22,7 @@
 // Riferimenti diretti ai label diagnostici (aggiornati senza reloadSections!)
 @property (nonatomic, weak) UILabel *diagStatusLabel;
 @property (nonatomic, weak) UILabel *diagLocationLabel;
+@property (nonatomic, weak) UILabel *tollGuruStatusLabel;
 
 @end
 
@@ -104,6 +107,13 @@
             self.diagLocationLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
         }
     }
+
+    if (self.tollGuruStatusLabel) {
+        self.tollGuruStatusLabel.text = [[TollGuruService sharedService] quotaStatusDescription];
+        self.tollGuruStatusLabel.textColor = [TollGuruService sharedService].isQuotaExceeded
+            ? [UIColor colorWithRed:1.0 green:0.4 blue:0.3 alpha:1.0]
+            : [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0];
+    }
 }
 
 - (void)dismissKeyboard {
@@ -150,6 +160,9 @@
         double val = [txt doubleValue];
         [[FuelPriceService sharedService] setCustomPrice:val forFuelType:[FuelPriceService sharedService].selectedFuelType];
     }
+    if (self.tollGuruApiKeyTextField) {
+        [TollGuruService sharedService].apiKey = self.tollGuruApiKeyTextField.text;
+    }
 
     [gps saveSettings];
     [gps startWithSavedSettings];
@@ -172,6 +185,8 @@
         NSString *t = [textField.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
         double val = [t doubleValue];
         [fuel setCustomPrice:val forFuelType:type];
+    } else if (textField == self.tollGuruApiKeyTextField) {
+        [TollGuruService sharedService].apiKey = textField.text;
     }
 }
 
@@ -267,7 +282,7 @@
     switch (section) {
         case 0: return 3; // Versione App, Data Build, Architettura
         case 1: return 1; // Lingua Interfaccia
-        case 2: return 4; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT
+        case 2: return 6; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT, TollGuru Key, TollGuru Status
         case 3: return 5; // Ricevitore GPS di Rete
         case 4: return 2; // Repository Cydia OTA
         case 5: return 1; // Guida Vocale
@@ -309,8 +324,8 @@
     // SEZIONE 0: Versione Software
     if (indexPath.section == 0) {
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.5";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.5";
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.6";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.6";
 
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"APP_VERSION", @"Versione Applicazione");
@@ -411,6 +426,32 @@
             cell.detailTextLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
             cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        } else if (indexPath.row == 4) {
+            cell.textLabel.text = NLString(@"TOLLGURU_API_KEY", @"Chiave API TollGuru");
+            if (!self.tollGuruApiKeyTextField) {
+                self.tollGuruApiKeyTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 150, 32)];
+                self.tollGuruApiKeyTextField.textColor = [UIColor whiteColor];
+                self.tollGuruApiKeyTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+                self.tollGuruApiKeyTextField.textAlignment = NSTextAlignmentCenter;
+                self.tollGuruApiKeyTextField.layer.cornerRadius = 6.0;
+                self.tollGuruApiKeyTextField.placeholder = NLString(@"OPTIONAL_API_KEY", @"Opzionale");
+                self.tollGuruApiKeyTextField.autocorrectionType = UITextAutocorrectionTypeNo;
+                self.tollGuruApiKeyTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                self.tollGuruApiKeyTextField.delegate = self;
+            }
+            self.tollGuruApiKeyTextField.text = [TollGuruService sharedService].apiKey;
+            cell.accessoryView = self.tollGuruApiKeyTextField;
+        } else if (indexPath.row == 5) {
+            cell.textLabel.text = NLString(@"TOLLGURU_STATUS", @"Stato API TollGuru");
+            cell.detailTextLabel.text = [[TollGuruService sharedService] quotaStatusDescription];
+            cell.detailTextLabel.textColor = [TollGuruService sharedService].isQuotaExceeded
+                ? [UIColor colorWithRed:1.0 green:0.4 blue:0.3 alpha:1.0]
+                : [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0];
+            self.tollGuruStatusLabel = cell.detailTextLabel;
+            if ([TollGuruService sharedService].isQuotaExceeded) {
+                cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+                cell.selectionStyle = UITableViewCellSelectionStyleGray;
+            }
         }
     }
     // SEZIONE 3: GPS Rete
@@ -440,7 +481,9 @@
             cell.textLabel.text = NLString(@"SERVER_IP", @"IP Server Android (per TCP)");
             if (!self.ipTextField) {
                 self.ipTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 130, 32)];
-                self.ipTextField.text = gps.tcpHost ?: @"192.168.43.1";
+                NSString *gw = [NetworkGPSReceiver defaultGatewayIP];
+                self.ipTextField.text = (gps.tcpHost.length > 0) ? gps.tcpHost : (gw ?: @"192.168.43.1");
+                self.ipTextField.placeholder = gw ?: @"192.168.43.1";
                 self.ipTextField.textColor = [UIColor whiteColor];
                 self.ipTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
                 self.ipTextField.textAlignment = NSTextAlignmentCenter;
@@ -533,6 +576,19 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section == 2 && indexPath.row == 3) {
         [self fetchMIMITPrices];
+    }
+    if (indexPath.section == 2 && indexPath.row == 5) {
+        if ([TollGuruService sharedService].isQuotaExceeded) {
+            UIAlertController *resetAlert = [UIAlertController alertControllerWithTitle:NLString(@"TOLLGURU_RESET_TITLE", @"Quota TollGuru")
+                                                                                message:NLString(@"TOLLGURU_RESET_MSG", @"La quota giornaliera (~15 calcoli) è risultata esaurita oggi. Vuoi azzerare il blocco per ritentare?")
+                                                                         preferredStyle:UIAlertControllerStyleAlert];
+            [resetAlert addAction:[UIAlertAction actionWithTitle:NLString(@"RESET", @"Azzera Blocco") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                [[TollGuruService sharedService] resetQuotaStatus];
+                [self.tableView reloadData];
+            }]];
+            [resetAlert addAction:[UIAlertAction actionWithTitle:NLString(@"CANCEL", @"Annulla") style:UIAlertActionStyleCancel handler:nil]];
+            [self presentViewController:resetAlert animated:YES completion:nil];
+        }
     }
     if (indexPath.section == 4 && indexPath.row == 0) {
         [self copyCydiaRepoURL];

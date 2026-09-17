@@ -381,19 +381,15 @@ static double InterpolateAngle(double current, double target, double factor) {
         // FIX FUORI DAL RANGE RAGIONEVOLE!
         self.isConfirmedOnRoute = NO;
 
-        // Se il veicolo si sta muovendo, conta le letture consecutive divergenti
-        if (self.smoothedSpeed > 1.1 || location.speed > 1.1) {
-            _offRouteConsecutiveCount++;
-            if (_offRouteConsecutiveCount >= 3) {
-                // 3 letture consecutive confermate fuori rotta in movimento -> Scatta il ricalcolo automatico!
-                if ([self.delegate respondsToSelector:@selector(routeTrackingEngineDidDetectOffRoute:atLocation:)]) {
-                    [self.delegate routeTrackingEngineDidDetectOffRoute:self atLocation:location];
-                }
-                _offRouteConsecutiveCount = 0;
+        // Incrementa contatore fuori rotta sia in movimento sia da fermi (sosta fuori dal corridoio)
+        _offRouteConsecutiveCount++;
+        if (_offRouteConsecutiveCount >= 3) {
+            // 3 letture consecutive confermate fuori rotta -> Scatta il ricalcolo automatico!
+            if ([self.delegate respondsToSelector:@selector(routeTrackingEngineDidDetectOffRoute:atLocation:)]) {
+                [self.delegate routeTrackingEngineDidDetectOffRoute:self atLocation:location];
             }
+            _offRouteConsecutiveCount = 0;
         }
-        // IMPORTANTE: Anche con 1 o 2 fix fuori rotta (rumore temporaneo o galleria),
-        // l'auto NON viene sbalzata fuori strada ma continua a seguire la rotta col dead reckoning.
     }
 }
 
@@ -402,6 +398,26 @@ static double InterpolateAngle(double current, double target, double factor) {
 - (void)updateTickWithDeltaTime:(NSTimeInterval)dt {
     if (!self.hasActiveRoute || _segmentCount == 0) {
         return;
+    }
+
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSTimeInterval timeSinceLastFix = (_lastFixTimestamp > 0) ? (now - _lastFixTimestamp) : 0;
+
+    // Watchdog anti-freeze e anti-ghost navigation:
+    // Se non arrivano fix GPS da più di 1.8 secondi (sosta ad autogrill, galleria o interruzione stream),
+    // applica una frenata inerziale progressiva verso lo 0.
+    if (timeSinceLastFix > 1.8) {
+        if (self.smoothedSpeed > 0.1) {
+            self.smoothedSpeed = MAX(0.0, self.smoothedSpeed - (6.0 * dt));
+        }
+    }
+    if (timeSinceLastFix > 3.5) {
+        self.smoothedSpeed = 0.0;
+    }
+
+    // Se siamo confermati fuori rotta da 2 o più cicli, blocchiamo l'avanzamento sulla vecchia rotta
+    if (!self.isConfirmedOnRoute && _offRouteConsecutiveCount >= 2) {
+        self.smoothedSpeed = 0.0;
     }
 
     // 1. Avanzamento continuo lungo la polyline: distanza = velocità * dt

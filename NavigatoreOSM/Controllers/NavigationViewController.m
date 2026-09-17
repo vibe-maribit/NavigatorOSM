@@ -1117,10 +1117,23 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
     CLLocation *loc = [locations lastObject];
-    if (loc) {
-        self.gpsSourceLabel.text = @"GPS: iOS Interno/Hotspot";
-        [self processLocationUpdate:loc heading:self.currentHeading];
+    if (!loc) return;
+
+    // Se il ricevitore di rete Android è attivo e sta ricevendo fix recenti (< 5.0 secondi),
+    // ignoriamo completamente CoreLocation per evitare che la triangolazione Wi-Fi / celle (200-500m)
+    // generi salti spuri, il cerchio di approssimazione gigante o continui falsi ricalcoli!
+    NetworkGPSReceiver *netGPS = [NetworkGPSReceiver sharedReceiver];
+    if (netGPS.isRunning && netGPS.lastPacketTimestamp && [[NSDate date] timeIntervalSinceDate:netGPS.lastPacketTimestamp] < 5.0) {
+        return;
     }
+
+    // Se l'accuratezza di CoreLocation è peggiore di 65m, scartiamo il fix
+    if (loc.horizontalAccuracy > 65.0) {
+        return;
+    }
+
+    self.gpsSourceLabel.text = @"GPS: iOS Interno/Hotspot";
+    [self processLocationUpdate:loc heading:self.currentHeading];
 }
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading {
@@ -1128,8 +1141,14 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
 }
 
 - (void)networkGPSDidUpdateLocation:(CLLocation *)location heading:(CLLocationDirection)heading {
-    self.gpsSourceLabel.text = @"GPS: Rete Android (UDP 8888)";
-    self.currentHeading = heading;
+    NetworkGPSReceiver *netGPS = [NetworkGPSReceiver sharedReceiver];
+    NSString *source = [NSString stringWithFormat:@"GPS: Android (%@ %@)",
+                        netGPS.lastStreamType ?: @"NET",
+                        netGPS.lastSenderIP ?: @""];
+    self.gpsSourceLabel.text = source;
+    if (heading >= 0) {
+        self.currentHeading = heading;
+    }
     [self processLocationUpdate:location heading:heading];
 }
 
@@ -1167,8 +1186,11 @@ static int DeduceSpeedLimitFromRoadName(NSString *roadName) {
         [self.speedometer updateSpeed:location.speed];
 
         // In guida libera, se la telecamera sta inseguendo la posizione ed è a velocità di marcia,
-        // aggiorna la telecamera senza animazioni lente o a scatti (animated:NO)
-        if (self.isTrackingVehicle && self.hasPerformedInitialZoom && location.speed >= 1.2) {
+        // aggiorna la telecamera senza animazioni lente o a scatti (animated:NO).
+        // IMPORTANTE: se il selettore itinerari è aperto (preview percorsi), NON muovere la telecamera
+        // per non cancellare la vista panoramica del percorso e lasciare solo le card!
+        BOOL isRouteSelectorActive = (self.routeSelector && !self.routeSelector.hidden);
+        if (self.isTrackingVehicle && self.hasPerformedInitialZoom && location.speed >= 1.2 && !isRouteSelectorActive) {
             double speed = location.speed;
             double altitude = self.is3DMode ? (400.0 + MIN(speed * 3.2, 320.0)) : 1200.0;
             MKMapCamera *cam = [MKMapCamera cameraLookingAtCenterCoordinate:location.coordinate
