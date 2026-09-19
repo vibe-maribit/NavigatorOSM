@@ -152,7 +152,7 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 14.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.6 (iPad; iOS 9.3.5; CarburantiClient)",
+            @"User-Agent": @"NavigatoreOSM/1.3.7 (iPad; iOS 9.3.5; CarburantiClient)",
             @"Content-Type": @"application/json"
         };
         _session = [NSURLSession sessionWithConfiguration:config];

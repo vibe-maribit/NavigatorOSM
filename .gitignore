@@ -9,12 +9,14 @@ build_ipa/
 
 # Binari distribuiti (generabili con ./package-ipa.sh)
 *.ipa
+!cydia_repo/*.ipa
 packages/
 
 # Android build artifacts
 android/.gradle/
 android/**/build/
 *.apk
+!cydia_repo/*.apk
 
 # File di sistema e editor
 .DS_Store

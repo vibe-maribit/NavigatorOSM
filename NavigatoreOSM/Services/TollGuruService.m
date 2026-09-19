@@ -32,7 +32,7 @@ static NSString *const kDefaultsTollGuruCountDate = @"TollGuru_CountDate";
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 8.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.6 (iPad Mini 1; iOS 9.3.5)"
+            @"User-Agent": @"NavigatoreOSM/1.3.7 (iPad Mini 1; iOS 9.3.5)"
         };
         _session = [NSURLSession sessionWithConfiguration:config];
         _hasSpokenQuotaWarningToday = NO;

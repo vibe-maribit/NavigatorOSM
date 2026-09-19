@@ -41,7 +41,7 @@
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 6.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.6 (iPad Mini 1; iOS 9.3.5; TrafficClient)"
+            @"User-Agent": @"NavigatoreOSM/1.3.7 (iPad Mini 1; iOS 9.3.5; TrafficClient)"
         };
         _session = [NSURLSession sessionWithConfiguration:config];
 
