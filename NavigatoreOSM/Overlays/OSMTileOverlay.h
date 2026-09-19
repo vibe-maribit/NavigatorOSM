@@ -1,4 +1,4 @@
-#import <MapKit/MapKit.h>
+#import "../Services/RoutingService.h"
 
 typedef NS_ENUM(NSInteger, OSMMapTheme) {
     OSMMapThemeStandard = 0,
@@ -12,5 +12,10 @@ typedef NS_ENUM(NSInteger, OSMMapTheme) {
 
 - (instancetype)initWithTheme:(OSMMapTheme)theme;
 - (void)switchTheme:(OSMMapTheme)newTheme;
+
+/// Cache e Prefetching Predittivo
+- (void)clearMemoryCache;
+- (void)prefetchTilesAlongRoute:(RouteInfo *)route currentDistance:(double)currentDistance lookaheadMeters:(double)lookahead;
+- (void)prefetchTilesAheadOfCoordinate:(CLLocationCoordinate2D)coord heading:(double)heading speed:(double)speed;
 
 @end

@@ -1,6 +1,9 @@
 #import "VoiceGuidanceService.h"
 #import "LocalizationManager.h"
 
+NSString *const kVoiceGuidanceModeChangedNotification = @"VoiceGuidanceModeChangedNotification";
+NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
+
 @interface VoiceGuidanceService () <AVSpeechSynthesizerDelegate>
 @property (nonatomic, strong) AVSpeechSynthesizer *synthesizer;
 @property (nonatomic, copy) NSString *lastSpokenPhrase;
@@ -30,10 +33,75 @@
     if (self) {
         _synthesizer = [[AVSpeechSynthesizer alloc] init];
         _synthesizer.delegate = self;
-        _isMuted = NO;
         _trackedStepIndex = NSNotFound;
     }
     return self;
+}
+
+#pragma mark - Gestione Modalità Guida Vocale
+
+- (VoiceGuidanceMode)voiceMode {
+    if (![[NSUserDefaults standardUserDefaults] objectForKey:kPrefVoiceGuidanceMode]) {
+        return VoiceGuidanceModeAll;
+    }
+    return (VoiceGuidanceMode)[[NSUserDefaults standardUserDefaults] integerForKey:kPrefVoiceGuidanceMode];
+}
+
+- (void)setVoiceMode:(VoiceGuidanceMode)mode {
+    [[NSUserDefaults standardUserDefaults] setInteger:mode forKey:kPrefVoiceGuidanceMode];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    if (mode == VoiceGuidanceModeMuted) {
+        [self stopSpeaking];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:kVoiceGuidanceModeChangedNotification object:self];
+}
+
+- (BOOL)isMuted {
+    return (self.voiceMode == VoiceGuidanceModeMuted);
+}
+
+- (void)setIsMuted:(BOOL)isMuted {
+    self.voiceMode = isMuted ? VoiceGuidanceModeMuted : VoiceGuidanceModeAll;
+}
+
+- (void)cycleVoiceMode {
+    VoiceGuidanceMode nextMode;
+    switch (self.voiceMode) {
+        case VoiceGuidanceModeAll:
+            nextMode = VoiceGuidanceModeAlertsOnly;
+            break;
+        case VoiceGuidanceModeAlertsOnly:
+            nextMode = VoiceGuidanceModeMuted;
+            break;
+        case VoiceGuidanceModeMuted:
+        default:
+            nextMode = VoiceGuidanceModeAll;
+            break;
+    }
+    self.voiceMode = nextMode;
+}
+
+- (NSString *)currentModeTitle {
+    BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+    switch (self.voiceMode) {
+        case VoiceGuidanceModeAll:
+            return isIt ? @"Voce Completa" : @"All Voice";
+        case VoiceGuidanceModeAlertsOnly:
+            return isIt ? @"Solo Allerte" : @"Alerts Only";
+        case VoiceGuidanceModeMuted:
+            return isIt ? @"Disattivata" : @"Muted";
+    }
+}
+
+- (NSString *)currentModeIcon {
+    switch (self.voiceMode) {
+        case VoiceGuidanceModeAll:
+            return @"🔊";
+        case VoiceGuidanceModeAlertsOnly:
+            return @"⚠️";
+        case VoiceGuidanceModeMuted:
+            return @"🔇";
+    }
 }
 
 - (void)stopSpeaking {
@@ -49,6 +117,12 @@
     self.didSpeak200m = NO;
     self.didSpeakNow = NO;
     [self stopSpeaking];
+}
+
+- (void)speakAlert:(NSString *)text {
+    // In modalità Solo Allerte o Completa, pronuncia l'avviso di sicurezza!
+    if (self.voiceMode == VoiceGuidanceModeMuted || !text || text.length == 0) return;
+    [self speak:text];
 }
 
 - (void)speak:(NSString *)text {
@@ -83,7 +157,8 @@
 }
 
 - (void)speakManeuver:(NSString *)instruction distanceInMeters:(double)distance stepIndex:(NSUInteger)stepIndex {
-    if (self.isMuted || !instruction || instruction.length == 0) return;
+    // Se la modalità NON è Completa (es. Solo Allerte o Muto), resta in silenzio sulle svolte ordinarie!
+    if (self.voiceMode != VoiceGuidanceModeAll || !instruction || instruction.length == 0) return;
 
     // Se siamo passati a una nuova manovra, resetta i checkpoint per il nuovo step
     if (self.trackedStepIndex != stepIndex) {

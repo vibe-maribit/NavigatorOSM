@@ -11,6 +11,8 @@ typedef NS_ENUM(NSInteger, FuelType) {
 
 extern NSString *const kFuelPricesUpdatedNotification;
 
+@class RouteInfo;
+
 @interface FuelStation : NSObject <NSSecureCoding>
 
 @property (nonatomic, assign) long long stationId;
@@ -98,6 +100,10 @@ extern NSString *const kFuelPricesUpdatedNotification;
 - (void)fetchStationsAroundCoordinate:(CLLocationCoordinate2D)coordinate
                              radiusKm:(int)radiusKm
                            completion:(void (^)(NSArray<FuelStation *> *stations, NSError *error))completion;
+
+/// Recupera distributori lungo l'itinerario selezionato
+- (void)fetchStationsAlongRoute:(RouteInfo *)route
+                     completion:(void (^)(NSArray<FuelStation *> *stations, NSError *error))completion;
 
 /// Metodo legacy per aggiornare le medie MIMIT
 - (void)fetchOnlinePricesAroundCoordinate:(CLLocationCoordinate2D)coordinate

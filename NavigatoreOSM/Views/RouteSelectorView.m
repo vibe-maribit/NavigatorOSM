@@ -191,6 +191,7 @@
         for (NSUInteger i = 0; i < self.routeButtons.count; i++) {
             UIButton *btn = self.routeButtons[i];
             btn.frame = CGRectMake(i * (cardW + cardSpacing), 0, cardW, containerH);
+            [self layoutCardSubviewsForButton:btn width:cardW height:containerH];
         }
     }
 }
@@ -265,26 +266,119 @@
     }
 }
 
+- (void)populateCardLabelsForButton:(UIButton *)btn route:(RouteInfo *)r index:(NSUInteger)idx {
+    UILabel *badgeLabel = (UILabel *)[btn viewWithTag:101];
+    UILabel *timeLabel = (UILabel *)[btn viewWithTag:102];
+    UILabel *distCostLabel = (UILabel *)[btn viewWithTag:103];
+    UILabel *roadsLabel = (UILabel *)[btn viewWithTag:104];
+
+    if (!badgeLabel) {
+        badgeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        badgeLabel.tag = 101;
+        badgeLabel.font = [UIFont boldSystemFontOfSize:12.5];
+        badgeLabel.textAlignment = NSTextAlignmentCenter;
+        badgeLabel.layer.cornerRadius = 9.0;
+        badgeLabel.layer.masksToBounds = YES;
+        badgeLabel.userInteractionEnabled = NO;
+        [btn addSubview:badgeLabel];
+    }
+
+    if (!timeLabel) {
+        timeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        timeLabel.tag = 102;
+        timeLabel.font = [UIFont boldSystemFontOfSize:24.0];
+        timeLabel.textAlignment = NSTextAlignmentCenter;
+        timeLabel.userInteractionEnabled = NO;
+        timeLabel.adjustsFontSizeToFitWidth = YES;
+        timeLabel.minimumScaleFactor = 0.75;
+        [btn addSubview:timeLabel];
+    }
+
+    if (!distCostLabel) {
+        distCostLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        distCostLabel.tag = 103;
+        distCostLabel.font = [UIFont boldSystemFontOfSize:14.0];
+        distCostLabel.textAlignment = NSTextAlignmentCenter;
+        distCostLabel.textColor = [UIColor colorWithRed:1.0 green:0.85 blue:0.35 alpha:1.0];
+        distCostLabel.userInteractionEnabled = NO;
+        distCostLabel.adjustsFontSizeToFitWidth = YES;
+        distCostLabel.minimumScaleFactor = 0.75;
+        [btn addSubview:distCostLabel];
+    }
+
+    if (!roadsLabel) {
+        roadsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        roadsLabel.tag = 104;
+        roadsLabel.font = [UIFont systemFontOfSize:13.0];
+        roadsLabel.textAlignment = NSTextAlignmentCenter;
+        roadsLabel.textColor = [UIColor colorWithWhite:0.85 alpha:1.0];
+        roadsLabel.userInteractionEnabled = NO;
+        roadsLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [btn addSubview:roadsLabel];
+    }
+
+    // Imposta contenuti
+    NSString *badge = r.badgeTitle ?: ((idx == 0) ? @"⚡ PIÙ VELOCE" : [NSString stringWithFormat:@"🛣️ ITINERARIO %lu", (unsigned long)(idx + 1)]);
+    badgeLabel.text = badge;
+    if ([badge containsString:@"VELOCE"]) {
+        badgeLabel.backgroundColor = [UIColor colorWithRed:0.12 green:0.65 blue:0.30 alpha:0.95];
+        badgeLabel.textColor = [UIColor whiteColor];
+    } else if ([badge containsString:@"ECONOMICO"]) {
+        badgeLabel.backgroundColor = [UIColor colorWithRed:0.85 green:0.55 blue:0.10 alpha:0.95];
+        badgeLabel.textColor = [UIColor whiteColor];
+    } else {
+        badgeLabel.backgroundColor = [UIColor colorWithWhite:0.35 alpha:0.90];
+        badgeLabel.textColor = [UIColor colorWithWhite:0.95 alpha:1.0];
+    }
+
+    int mins = (int)ceil(r.totalDuration / 60.0);
+    if (mins >= 60) {
+        timeLabel.text = [NSString stringWithFormat:@"%d h %d m", mins / 60, mins % 60];
+    } else {
+        timeLabel.text = [NSString stringWithFormat:@"%d min", mins];
+    }
+
+    NSString *distStr = (r.totalDistance > 1000) ? [NSString stringWithFormat:@"%.1f km", r.totalDistance / 1000.0]
+                                                 : [NSString stringWithFormat:@"%d m", (int)r.totalDistance];
+
+    if (r.totalTripCost <= 0.01) [r updateTripCosts];
+    NSString *costStr = (r.tollCost > 0.05)
+        ? [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ %.2f€", r.fuelCost, r.tollCost]
+        : [NSString stringWithFormat:@"⛽ %.2f€", r.fuelCost];
+
+    distCostLabel.text = [NSString stringWithFormat:@"%@ • %@", distStr, costStr];
+    roadsLabel.text = r.routeSummary.length > 0 ? [NSString stringWithFormat:@"via %@", r.routeSummary] : @"";
+}
+
+- (void)layoutCardSubviewsForButton:(UIButton *)btn width:(CGFloat)cardW height:(CGFloat)cardH {
+    UILabel *badgeLabel = (UILabel *)[btn viewWithTag:101];
+    UILabel *timeLabel = (UILabel *)[btn viewWithTag:102];
+    UILabel *distCostLabel = (UILabel *)[btn viewWithTag:103];
+    UILabel *roadsLabel = (UILabel *)[btn viewWithTag:104];
+
+    CGFloat pad = 6.0;
+    if (badgeLabel) {
+        CGFloat badgeW = MIN(cardW - 16.0, 130.0);
+        badgeLabel.frame = CGRectMake((cardW - badgeW) / 2.0, 7.0, badgeW, 20.0);
+    }
+    if (timeLabel) {
+        timeLabel.frame = CGRectMake(pad, 30.0, cardW - pad * 2.0, 32.0);
+    }
+    if (distCostLabel) {
+        distCostLabel.frame = CGRectMake(pad, 64.0, cardW - pad * 2.0, 22.0);
+    }
+    if (roadsLabel) {
+        roadsLabel.frame = CGRectMake(pad, 88.0, cardW - pad * 2.0, 20.0);
+    }
+}
+
 - (void)handlePricesUpdated {
     for (NSUInteger i = 0; i < self.routes.count; i++) {
         RouteInfo *r = self.routes[i];
         [r updateTripCosts];
         if (i < self.routeButtons.count) {
             UIButton *btn = self.routeButtons[i];
-            int mins = (int)ceil(r.totalDuration / 60.0);
-            NSString *timeStr = [NSString stringWithFormat:@"%d min", mins];
-            NSString *distStr = (r.totalDistance > 1000) ? [NSString stringWithFormat:@"%.1f km", r.totalDistance / 1000.0]
-                                                         : [NSString stringWithFormat:@"%d m", (int)r.totalDistance];
-
-            NSString *badge = r.badgeTitle ?: @"Itinerario";
-            NSString *roads = r.routeSummary ?: @"";
-
-            NSString *costStr = (r.tollCost > 0.05)
-                ? [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ %.2f€", r.fuelCost, r.tollCost]
-                : [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ 0€", r.fuelCost];
-
-            NSString *title = [NSString stringWithFormat:@"%@\n%@ • %@\n%@\n%@", badge, timeStr, distStr, costStr, roads];
-            [btn setTitle:title forState:UIControlStateNormal];
+            [self populateCardLabelsForButton:btn route:r index:i];
         }
     }
     [self updateCostSummary];
@@ -307,7 +401,7 @@
     CGFloat containerW = self.buttonsContainer.bounds.size.width;
     if (containerW <= 0) containerW = self.bounds.size.width - 32.0;
     CGFloat containerH = self.buttonsContainer.bounds.size.height;
-    if (containerH <= 0) containerH = 92.0;
+    if (containerH <= 0) containerH = 114.0;
 
     CGFloat cardSpacing = 8.0;
     CGFloat itemW = floor((containerW - (CGFloat)(routes.count - 1) * cardSpacing) / (CGFloat)routes.count);
@@ -316,31 +410,12 @@
         RouteInfo *r = routes[i];
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
         btn.frame = CGRectMake(i * (itemW + cardSpacing), 0, itemW, containerH);
-        btn.layer.cornerRadius = 12.0;
+        btn.layer.cornerRadius = 14.0;
         btn.tag = i;
         [btn addTarget:self action:@selector(handleRouteTapped:) forControlEvents:UIControlEventTouchUpInside];
 
-        int mins = (int)ceil(r.totalDuration / 60.0);
-        NSString *timeStr = [NSString stringWithFormat:@"%d min", mins];
-        NSString *distStr = (r.totalDistance > 1000) ? [NSString stringWithFormat:@"%.1f km", r.totalDistance / 1000.0]
-                                                     : [NSString stringWithFormat:@"%d m", (int)r.totalDistance];
-
-        NSString *badge = r.badgeTitle ?: @"Itinerario";
-        NSString *roads = r.routeSummary ?: @"";
-
-        if (r.totalTripCost <= 0.01) {
-            [r updateTripCosts];
-        }
-
-        NSString *costStr = (r.tollCost > 0.05)
-            ? [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ %.2f€", r.fuelCost, r.tollCost]
-            : [NSString stringWithFormat:@"⛽ %.2f€ • 🛣️ 0€", r.fuelCost];
-
-        NSString *title = [NSString stringWithFormat:@"%@\n%@ • %@\n%@\n%@", badge, timeStr, distStr, costStr, roads];
-        [btn setTitle:title forState:UIControlStateNormal];
-        btn.titleLabel.numberOfLines = 4;
-        btn.titleLabel.textAlignment = NSTextAlignmentCenter;
-        btn.titleLabel.font = [UIFont systemFontOfSize:11.5];
+        [self populateCardLabelsForButton:btn route:r index:i];
+        [self layoutCardSubviewsForButton:btn width:itemW height:containerH];
 
         [self.buttonsContainer addSubview:btn];
         [self.routeButtons addObject:btn];
@@ -353,16 +428,17 @@
 - (void)updateButtonHighlights {
     for (NSUInteger i = 0; i < self.routeButtons.count; i++) {
         UIButton *btn = self.routeButtons[i];
+        UILabel *timeLabel = (UILabel *)[btn viewWithTag:102];
         if (i == self.selectedIndex) {
-            btn.backgroundColor = [UIColor colorWithRed:0.0 green:0.45 blue:0.95 alpha:0.9];
+            btn.backgroundColor = [UIColor colorWithRed:0.0 green:0.38 blue:0.88 alpha:0.95];
             btn.layer.borderColor = [[UIColor whiteColor] CGColor];
-            btn.layer.borderWidth = 2.0;
-            [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+            btn.layer.borderWidth = 2.5;
+            if (timeLabel) timeLabel.textColor = [UIColor whiteColor];
         } else {
-            btn.backgroundColor = [UIColor colorWithWhite:0.22 alpha:0.8];
+            btn.backgroundColor = [UIColor colorWithWhite:0.18 alpha:0.85];
             btn.layer.borderColor = [[UIColor colorWithWhite:0.4 alpha:0.5] CGColor];
             btn.layer.borderWidth = 1.0;
-            [btn setTitleColor:[UIColor colorWithWhite:0.85 alpha:1.0] forState:UIControlStateNormal];
+            if (timeLabel) timeLabel.textColor = [UIColor colorWithWhite:0.92 alpha:1.0];
         }
     }
 }

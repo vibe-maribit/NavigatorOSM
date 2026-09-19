@@ -18,7 +18,9 @@
 @property (nonatomic, strong) UITextField *portTextField;
 @property (nonatomic, strong) UITextField *ipTextField;
 @property (nonatomic, strong) UISwitch *voiceSwitch;
+@property (nonatomic, strong) UISegmentedControl *voiceModeSegment;
 @property (nonatomic, strong) UISegmentedControl *themeSegment;
+@property (nonatomic, strong) UISwitch *showFuelStationsSwitch;
 
 // Traffico & Autovelox
 @property (nonatomic, strong) UISwitch *trafficSwitch;
@@ -146,7 +148,9 @@
     if (self.themeSegment) {
         [[NSUserDefaults standardUserDefaults] setInteger:self.themeSegment.selectedSegmentIndex forKey:@"MapThemeIndex"];
     }
-    if (self.voiceSwitch) {
+    if (self.voiceModeSegment) {
+        [VoiceGuidanceService sharedService].voiceMode = (VoiceGuidanceMode)self.voiceModeSegment.selectedSegmentIndex;
+    } else if (self.voiceSwitch) {
         [VoiceGuidanceService sharedService].isMuted = !self.voiceSwitch.isOn;
     }
 
@@ -163,6 +167,10 @@
         NSString *txt = [self.priceTextField.text stringByReplacingOccurrencesOfString:@"," withString:@"."];
         double val = [txt doubleValue];
         [[FuelPriceService sharedService] setCustomPrice:val forFuelType:[FuelPriceService sharedService].selectedFuelType];
+    }
+    if (self.showFuelStationsSwitch) {
+        [[NSUserDefaults standardUserDefaults] setBool:self.showFuelStationsSwitch.isOn forKey:@"ShowFuelStationsOnMap"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kFuelPricesUpdatedNotification object:nil];
     }
     if (self.tollGuruApiKeyTextField) {
         [TollGuruService sharedService].apiKey = self.tollGuruApiKeyTextField.text;
@@ -219,6 +227,10 @@
         self.priceTextField.text = [NSString stringWithFormat:@"%.3f", p];
     }
     [self.tableView reloadData];
+}
+
+- (void)applyVoiceModeChange:(UISegmentedControl *)sender {
+    [VoiceGuidanceService sharedService].voiceMode = (VoiceGuidanceMode)sender.selectedSegmentIndex;
 }
 
 - (void)fetchMIMITPrices {
@@ -286,7 +298,7 @@
     switch (section) {
         case 0: return 3; // Versione App, Data Build, Architettura
         case 1: return 1; // Lingua Interfaccia
-        case 2: return 6; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT, TollGuru Key, TollGuru Status
+        case 2: return 7; // Carburante: Tipo, Consumo, Prezzo, Aggiorna MIMIT, Mostra Distributori, TollGuru Key, TollGuru Status
         case 3: return 4; // Ricevitore GPS di Rete (Porta, IP Server, Diagnostica, Ultima Posizione)
         case 4: return 3; // Traffico & Autovelox: Attiva Traffico, Chiave TomTom, Avvisi Velox
         case 5: return 2; // Repository Cydia OTA
@@ -330,8 +342,8 @@
     // SEZIONE 0: Versione Software
     if (indexPath.section == 0) {
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.7";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.7";
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.8";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.8";
 
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"APP_VERSION", @"Versione Applicazione");
@@ -433,6 +445,18 @@
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
             cell.selectionStyle = UITableViewCellSelectionStyleGray;
         } else if (indexPath.row == 4) {
+            cell.textLabel.text = NLString(@"SHOW_FUEL_ON_MAP", @"Mostra Distributori su Mappa");
+            if (!self.showFuelStationsSwitch) {
+                self.showFuelStationsSwitch = [[UISwitch alloc] init];
+                BOOL isShown = YES;
+                if ([[NSUserDefaults standardUserDefaults] objectForKey:@"ShowFuelStationsOnMap"]) {
+                    isShown = [[NSUserDefaults standardUserDefaults] boolForKey:@"ShowFuelStationsOnMap"];
+                }
+                self.showFuelStationsSwitch.on = isShown;
+                self.showFuelStationsSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+            }
+            cell.accessoryView = self.showFuelStationsSwitch;
+        } else if (indexPath.row == 5) {
             cell.textLabel.text = NLString(@"TOLLGURU_API_KEY", @"Chiave API TollGuru");
             if (!self.tollGuruApiKeyTextField) {
                 self.tollGuruApiKeyTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 150, 32)];
@@ -447,7 +471,7 @@
             }
             self.tollGuruApiKeyTextField.text = [TollGuruService sharedService].apiKey;
             cell.accessoryView = self.tollGuruApiKeyTextField;
-        } else if (indexPath.row == 5) {
+        } else if (indexPath.row == 6) {
             cell.textLabel.text = NLString(@"TOLLGURU_STATUS", @"Stato API TollGuru");
             cell.detailTextLabel.text = [[TollGuruService sharedService] quotaStatusDescription];
             cell.detailTextLabel.textColor = [TollGuruService sharedService].isQuotaExceeded
@@ -573,13 +597,18 @@
     }
     // SEZIONE 6: Guida Vocale
     else if (indexPath.section == 6) {
-        cell.textLabel.text = NLString(@"VOICE_SWITCH", @"Attiva Istruzioni Vocali");
-        if (!self.voiceSwitch) {
-            self.voiceSwitch = [[UISwitch alloc] init];
-            self.voiceSwitch.on = ![VoiceGuidanceService sharedService].isMuted;
-            self.voiceSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+        cell.textLabel.text = NLString(@"VOICE_MODE", @"Modalità Voce");
+        if (!self.voiceModeSegment) {
+            self.voiceModeSegment = [[UISegmentedControl alloc] initWithItems:@[
+                NLString(@"VOICE_ALL", @"🔊 Completa"),
+                NLString(@"VOICE_ALERTS", @"⚠️ Solo Allerte"),
+                NLString(@"VOICE_MUTED", @"🔇 Muto")
+            ]];
+            self.voiceModeSegment.selectedSegmentIndex = [VoiceGuidanceService sharedService].voiceMode;
+            self.voiceModeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+            [self.voiceModeSegment addTarget:self action:@selector(applyVoiceModeChange:) forControlEvents:UIControlEventValueChanged];
         }
-        cell.accessoryView = self.voiceSwitch;
+        cell.accessoryView = self.voiceModeSegment;
     }
     // SEZIONE 7: Stile Mappa
     else if (indexPath.section == 7) {
@@ -613,7 +642,7 @@
     if (indexPath.section == 2 && indexPath.row == 3) {
         [self fetchMIMITPrices];
     }
-    if (indexPath.section == 2 && indexPath.row == 5) {
+    if (indexPath.section == 2 && indexPath.row == 6) {
         if ([TollGuruService sharedService].isQuotaExceeded) {
             UIAlertController *resetAlert = [UIAlertController alertControllerWithTitle:NLString(@"TOLLGURU_RESET_TITLE", @"Quota TollGuru")
                                                                                 message:NLString(@"TOLLGURU_RESET_MSG", @"La quota giornaliera (~15 calcoli) è risultata esaurita oggi. Vuoi azzerare il blocco per ritentare?")

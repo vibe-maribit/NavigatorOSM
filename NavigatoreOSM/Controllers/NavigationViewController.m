@@ -55,6 +55,20 @@
 @property (nonatomic, assign) NSTimeInterval lastCameraCheckTime;
 @property (nonatomic, assign) BOOL hasFetchedInitialCameras;
 
+// Toast HUD per feedback immediato
+@property (nonatomic, strong) UILabel *toastLabel;
+
+// Ricalcolo Intelligente & Deviazione Volontaria
+@property (nonatomic, strong) UIButton *detourRecalculateButton;
+@property (nonatomic, strong) NSDate *lastRerouteDate;
+@property (nonatomic, strong) NSDate *lastRerouteSpokenDate;
+@property (nonatomic, assign) NSUInteger consecutiveRerouteAttempts;
+
+// Distributori Carburante su Mappa
+@property (nonatomic, strong) NSMutableArray<FuelStationAnnotation *> *fuelAnnotations;
+@property (nonatomic, assign) BOOL hasFetchedInitialFuelStations;
+@property (nonatomic, assign) NSTimeInterval lastTilePrefetchTime;
+
 // Controlli Flottanti (FAB) — Colonna Verticale Collapsible
 @property (nonatomic, strong) UIButton *topSearchPill;
 @property (nonatomic, strong) UIButton *recenterButton;
@@ -256,7 +270,7 @@
     [self setupVerticalToolbar];
 
     // 8. Selettore Itinerari Multipli in basso (con opzioni al volo No Pedaggio/No Autostrade e costi)
-    self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(24, h - 225, w - 48, 205)];
+    self.routeSelector = [[RouteSelectorView alloc] initWithFrame:CGRectMake(20, h - 245, w - 40, 230)];
     self.routeSelector.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     self.routeSelector.delegate = self;
     self.routeSelector.hidden = YES;
@@ -269,6 +283,47 @@
     [self.view addSubview:self.poiResultsCard];
 
     self.cameraAnnotations = [NSMutableArray array];
+    self.fuelAnnotations = [NSMutableArray array];
+
+    // Pulsante Flottante Deviazione Volontaria / Ricalcolo Discreto
+    self.detourRecalculateButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.detourRecalculateButton.frame = CGRectMake((w - 240) / 2.0, 134, 240, 40);
+    self.detourRecalculateButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
+    self.detourRecalculateButton.backgroundColor = [UIColor colorWithRed:0.95 green:0.45 blue:0.10 alpha:0.95];
+    self.detourRecalculateButton.layer.cornerRadius = 20.0;
+    self.detourRecalculateButton.layer.borderColor = [[UIColor whiteColor] CGColor];
+    self.detourRecalculateButton.layer.borderWidth = 1.5;
+    [self.detourRecalculateButton setTitle:NLString(@"DETOUR_REROUTE", @"⚠️ Fuori rotta • 🔄 Ricalcola") forState:UIControlStateNormal];
+    [self.detourRecalculateButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.detourRecalculateButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.5];
+    [self.detourRecalculateButton addTarget:self action:@selector(handleDetourRecalculateTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.detourRecalculateButton.hidden = YES;
+    [self.view addSubview:self.detourRecalculateButton];
+
+    // Toast HUD compatto per feedback al tocco
+    self.toastLabel = [[UILabel alloc] initWithFrame:CGRectMake((w - 280) / 2.0, 80, 280, 36)];
+    self.toastLabel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
+    self.toastLabel.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.92];
+    self.toastLabel.textColor = [UIColor whiteColor];
+    self.toastLabel.textAlignment = NSTextAlignmentCenter;
+    self.toastLabel.font = [UIFont boldSystemFontOfSize:14.0];
+    self.toastLabel.layer.cornerRadius = 18.0;
+    self.toastLabel.layer.masksToBounds = YES;
+    self.toastLabel.layer.borderColor = [[UIColor colorWithWhite:0.3 alpha:0.8] CGColor];
+    self.toastLabel.layer.borderWidth = 1.0;
+    self.toastLabel.alpha = 0.0;
+    self.toastLabel.hidden = YES;
+    [self.view addSubview:self.toastLabel];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(updateFuelAnnotationsOnMap)
+                                                 name:kFuelPricesUpdatedNotification
+                                               object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleVoiceModeChanged:)
+                                                 name:kVoiceGuidanceModeChangedNotification
+                                               object:nil];
 
     // 10. Banner Allerta Autovelox in Avvicinamento
     CGFloat bannerW = MIN(380, w - 48);
@@ -354,7 +409,7 @@
     self.themeButton.alpha = 0;
     [self.view addSubview:self.themeButton];
 
-    self.muteButton = [self createCircularButtonWithTitle:@"🔊" frame:CGRectMake(btnX, baseY - spacing * 5, btnSize, btnSize)];
+    self.muteButton = [self createCircularButtonWithTitle:[[VoiceGuidanceService sharedService] currentModeIcon] frame:CGRectMake(btnX, baseY - spacing * 5, btnSize, btnSize)];
     [self.muteButton addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
     self.muteButton.hidden = YES;
     self.muteButton.alpha = 0;
@@ -621,10 +676,41 @@
 
 - (void)toggleMute {
     VoiceGuidanceService *voice = [VoiceGuidanceService sharedService];
-    voice.isMuted = !voice.isMuted;
-    [self.muteButton setTitle:(voice.isMuted ? @"🔇" : @"🔊") forState:UIControlStateNormal];
+    [voice cycleVoiceMode];
+    [self.muteButton setTitle:[voice currentModeIcon] forState:UIControlStateNormal];
+    [self showToastHUD:[NSString stringWithFormat:@"%@ %@", [voice currentModeIcon], [voice currentModeTitle]]];
 }
 
+- (void)handleVoiceModeChanged:(NSNotification *)notif {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.muteButton setTitle:[[VoiceGuidanceService sharedService] currentModeIcon] forState:UIControlStateNormal];
+    });
+}
+
+- (void)handleDetourRecalculateTapped {
+    self.consecutiveRerouteAttempts = 0;
+    self.detourRecalculateButton.hidden = YES;
+    [self showToastHUD:NLString(@"RECALCULATING_DETOUR", @"🔄 Ricalcolo percorso...")];
+    [self triggerAutoReroute];
+}
+
+- (void)showToastHUD:(NSString *)message {
+    if (!self.toastLabel) return;
+    self.toastLabel.text = message;
+    self.toastLabel.hidden = NO;
+    [self.view bringSubviewToFront:self.toastLabel];
+    [UIView animateWithDuration:0.2 animations:^{
+        self.toastLabel.alpha = 1.0;
+    } completion:^(BOOL finished) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [UIView animateWithDuration:0.3 animations:^{
+                self.toastLabel.alpha = 0.0;
+            } completion:^(BOOL fin) {
+                self.toastLabel.hidden = YES;
+            }];
+        });
+    }];
+}
 
 - (void)cancelCurrentRoute {
     self.currentRouteRequestId++;
@@ -633,6 +719,9 @@
     self.tripBar.hidden = YES;
     self.maneuverHUD.hidden = YES;
     self.cameraAlertBanner.hidden = YES;
+    self.detourRecalculateButton.hidden = YES;
+    self.consecutiveRerouteAttempts = 0;
+    self.lastRerouteDate = nil;
     self.lastAlertedCameraId = 0;
     self.lastCameraAlertDate = nil;
     [self.speedometer setDynamicSpeedLimit:0];
@@ -877,6 +966,8 @@
     self.mapView.showsUserLocation = YES;
 
     [self refreshSpeedCamerasForRoute:selectedRoute];
+    [self refreshFuelStationsForRoute:selectedRoute];
+    [self.osmOverlay prefetchTilesAlongRoute:selectedRoute currentDistance:0 lookaheadMeters:4000.0];
     self.isTrackingVehicle = YES;
 
     [self startDisplayLink];
@@ -1038,6 +1129,8 @@
         [weakSelf.routeSelector setRoutes:routes];
         weakSelf.routeSelector.hidden = NO;
         [weakSelf refreshSpeedCamerasForRoute:routes[0]];
+        [weakSelf refreshFuelStationsForRoute:routes[0]];
+        [weakSelf.osmOverlay prefetchTilesAlongRoute:routes[0] currentDistance:0 lookaheadMeters:4000.0];
 
         NSString *foundVoiceFmt = NLString(@"FOUND_ROUTES_VOICE", @"Trovati %lu itinerari. Tocca quello desiderato per iniziare.");
         NSString *voiceMsg = [NSString stringWithFormat:foundVoiceFmt, (unsigned long)routes.count];
@@ -1223,6 +1316,26 @@
     if (!self.hasFetchedInitialCameras && CLLocationCoordinate2DIsValid(location.coordinate) && fabs(location.coordinate.latitude) > 0.1) {
         self.hasFetchedInitialCameras = YES;
         [self refreshSpeedCamerasAroundCoordinate:location.coordinate];
+    }
+
+    if (!self.hasFetchedInitialFuelStations && CLLocationCoordinate2DIsValid(location.coordinate) && fabs(location.coordinate.latitude) > 0.1) {
+        self.hasFetchedInitialFuelStations = YES;
+        [self refreshFuelStationsAroundCoordinate:location.coordinate];
+    }
+
+    // Prefetching predittivo dei tasselli mappa (in navigazione lungo la rotta o a prua del veicolo)
+    NSTimeInterval nowPrefetch = CACurrentMediaTime();
+    if (nowPrefetch - self.lastTilePrefetchTime > 6.0) {
+        self.lastTilePrefetchTime = nowPrefetch;
+        if (self.isNavigating && self.currentRoute) {
+            [self.osmOverlay prefetchTilesAlongRoute:self.currentRoute
+                                     currentDistance:self.trackingEngine.currentRouteDistance
+                                     lookaheadMeters:4000.0];
+        } else if (location.speed > 3.5) { // Movimento > ~13 km/h in guida libera
+            [self.osmOverlay prefetchTilesAheadOfCoordinate:location.coordinate
+                                                    heading:self.currentHeading
+                                                      speed:location.speed];
+        }
     }
 
     if (self.isNavigating && self.trackingEngine.hasActiveRoute) {
@@ -1465,7 +1578,7 @@
                 voiceText = [NSString stringWithFormat:@"Attenzione, postazione di controllo velocità a %d metri.",
                              roundedDist];
             }
-            [[VoiceGuidanceService sharedService] speak:voiceText];
+            [[VoiceGuidanceService sharedService] speakAlert:voiceText];
         }
     } else {
         if (!self.cameraAlertBanner.hidden) {
@@ -1512,11 +1625,64 @@
     }
 }
 
+#pragma mark - Gestione Distributori Carburante
+
+- (BOOL)shouldShowFuelStationsOnMap {
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"ShowFuelStationsOnMap"]) {
+        return [[NSUserDefaults standardUserDefaults] boolForKey:@"ShowFuelStationsOnMap"];
+    }
+    return YES;
+}
+
+- (void)refreshFuelStationsAroundCoordinate:(CLLocationCoordinate2D)coord {
+    if (![self shouldShowFuelStationsOnMap]) return;
+    if (!CLLocationCoordinate2DIsValid(coord) || (fabs(coord.latitude) < 0.1 && fabs(coord.longitude) < 0.1)) return;
+    __weak NavigationViewController *weakSelf = self;
+    [[FuelPriceService sharedService] fetchStationsAroundCoordinate:coord radiusKm:15 completion:^(NSArray<FuelStation *> *stations, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateFuelAnnotationsOnMap];
+        });
+    }];
+}
+
+- (void)refreshFuelStationsForRoute:(RouteInfo *)route {
+    if (![self shouldShowFuelStationsOnMap]) return;
+    if (!route) return;
+    __weak NavigationViewController *weakSelf = self;
+    [[FuelPriceService sharedService] fetchStationsAlongRoute:route completion:^(NSArray<FuelStation *> *stations, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateFuelAnnotationsOnMap];
+        });
+    }];
+}
+
+- (void)updateFuelAnnotationsOnMap {
+    if (!self.fuelAnnotations) {
+        self.fuelAnnotations = [NSMutableArray array];
+    }
+    [self.mapView removeAnnotations:self.fuelAnnotations];
+    [self.fuelAnnotations removeAllObjects];
+
+    if (![self shouldShowFuelStationsOnMap]) {
+        return;
+    }
+
+    NSArray *anns = [[FuelPriceService sharedService] annotationsForCachedStations];
+    if (anns.count > 0) {
+        [self.fuelAnnotations addObjectsFromArray:anns];
+        [self.mapView addAnnotations:anns];
+    }
+}
+
 #pragma mark - RouteTrackingEngineDelegate
 
 - (void)routeTrackingEngine:(RouteTrackingEngine *)engine
         didAdvanceToStepIndex:(NSUInteger)stepIndex
       remainingDistanceToStep:(CLLocationDistance)distToStep {
+    if (self.detourRecalculateButton && !self.detourRecalculateButton.hidden) {
+        self.detourRecalculateButton.hidden = YES;
+        self.consecutiveRerouteAttempts = 0;
+    }
     if (self.currentRoute && stepIndex < self.currentRoute.steps.count) {
         ManeuverStep *step = self.currentRoute.steps[stepIndex];
         ManeuverStep *nextStep = (stepIndex + 1 < self.currentRoute.steps.count) ? self.currentRoute.steps[stepIndex + 1] : nil;
@@ -1525,7 +1691,7 @@
 }
 
 - (void)routeTrackingEngineDidArriveAtDestination:(RouteTrackingEngine *)engine {
-    [[VoiceGuidanceService sharedService] speak:NLString(@"ARRIVED", @"Sei arrivato a destinazione.")];
+    [[VoiceGuidanceService sharedService] speakAlert:NLString(@"ARRIVED", @"Sei arrivato a destinazione.")];
     [self cancelCurrentRoute];
 }
 
@@ -1535,14 +1701,38 @@
         [self.mapView removeAnnotation:self.vehicleAnnotation];
     }
     self.mapView.showsUserLocation = YES;
-    [self triggerAutoReroute];
+
+    self.consecutiveRerouteAttempts++;
+    if (self.consecutiveRerouteAttempts <= 2) {
+        // Primi tentativi: ricalcolo automatico discreto
+        [self triggerAutoReroute];
+    } else {
+        // Deviazione volontaria del guidatore (es. scelta di un'altra strada o sosta)
+        // Evitiamo il ciclo continuo di ricalcolo e audio assillante
+        if (self.detourRecalculateButton) {
+            self.detourRecalculateButton.hidden = NO;
+            [self.view bringSubviewToFront:self.detourRecalculateButton];
+        }
+    }
 }
 
 - (void)triggerAutoReroute {
     if (!self.isNavigating || !self.currentRoute) return;
 
+    NSDate *now = [NSDate date];
+    if (self.lastRerouteDate && [now timeIntervalSinceDate:self.lastRerouteDate] < 12.0) {
+        // Debounce ricalcolo per evitare spam di richieste di rete ravvicinate
+        return;
+    }
+    self.lastRerouteDate = now;
+
     NSUInteger thisRequestId = ++self.currentRouteRequestId;
-    [[VoiceGuidanceService sharedService] speak:NLString(@"RECALCULATING", @"Ricalcolo del percorso in corso...")];
+
+    // Notifica vocale discreta con throttle minimo di 35 secondi
+    if (!self.lastRerouteSpokenDate || [now timeIntervalSinceDate:self.lastRerouteSpokenDate] > 35.0) {
+        self.lastRerouteSpokenDate = now;
+        [[VoiceGuidanceService sharedService] speakAlert:NLString(@"RECALCULATING", @"Ricalcolo del percorso in corso...")];
+    }
 
     CLLocationCoordinate2D start;
     if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
@@ -1581,6 +1771,8 @@
 
         weakSelf.currentRoute = newRoute;
         weakSelf.currentStepIndex = 0;
+        weakSelf.consecutiveRerouteAttempts = 0;
+        weakSelf.detourRecalculateButton.hidden = YES;
         [weakSelf.trackingEngine setActiveRoute:newRoute initialLocation:weakSelf.currentLocation];
         [weakSelf.mapView addOverlay:newRoute.polyline level:MKOverlayLevelAboveLabels];
 
@@ -1591,8 +1783,13 @@
         }
         [weakSelf.tripBar updateRemainingDistance:newRoute.totalDistance duration:newRoute.totalDuration trafficStatus:newRoute.trafficDescription];
 
+        // Rinfresca velox, distributori e prefetch per il nuovo itinerario ricalcolato
+        [weakSelf refreshSpeedCamerasForRoute:newRoute];
+        [weakSelf refreshFuelStationsForRoute:newRoute];
+        [weakSelf.osmOverlay prefetchTilesAlongRoute:newRoute currentDistance:0 lookaheadMeters:4000.0];
+
         [[VoiceGuidanceService sharedService] resetManeuverTracking];
-        [[VoiceGuidanceService sharedService] speak:NLString(@"NEW_ROUTE_READY", @"Nuovo percorso pronto. Continua a guidare.")];
+        [[VoiceGuidanceService sharedService] speakAlert:NLString(@"NEW_ROUTE_READY", @"Nuovo percorso pronto. Continua a guidare.")];
     }];
 }
 

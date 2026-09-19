@@ -39,6 +39,8 @@ static double InterpolateAngle(double current, double target, double factor) {
     NSTimeInterval _lastFixTimestamp;
     double _lastFixProjectedProgress;
     NSInteger _offRouteConsecutiveCount;
+    NSTimeInterval _firstOffRouteTimestamp;
+    NSTimeInterval _lastOffRouteTriggerTimestamp;
 }
 
 @property (nonatomic, strong, readwrite) RouteInfo *activeRoute;
@@ -110,6 +112,8 @@ static double InterpolateAngle(double current, double target, double factor) {
     self.remainingDuration = 0;
     _currentSegmentIndex = 0;
     _offRouteConsecutiveCount = 0;
+    _firstOffRouteTimestamp = 0;
+    _lastOffRouteTriggerTimestamp = 0;
     _lastFixTimestamp = 0;
 }
 
@@ -346,6 +350,7 @@ static double InterpolateAngle(double current, double target, double factor) {
         // CONFERMATO ENTRO IL RANGE RAGIONEVOLE DELLA ROTTA!
         self.isConfirmedOnRoute = YES;
         _offRouteConsecutiveCount = 0;
+        _firstOffRouteTimestamp = 0;
 
         // Regola fondamentale richiesta dall'utente:
         // NON inseguire la posizione laterale segnalata dal GPS che potrebbe essere inesatta!
@@ -382,14 +387,26 @@ static double InterpolateAngle(double current, double target, double factor) {
         // FIX FUORI DAL RANGE RAGIONEVOLE!
         self.isConfirmedOnRoute = NO;
 
-        // Incrementa contatore fuori rotta sia in movimento sia da fermi (sosta fuori dal corridoio)
+        NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+        if (_offRouteConsecutiveCount == 0 || _firstOffRouteTimestamp <= 0) {
+            _firstOffRouteTimestamp = now;
+        }
         _offRouteConsecutiveCount++;
-        if (_offRouteConsecutiveCount >= 3) {
-            // 3 letture consecutive confermate fuori rotta -> Scatta il ricalcolo automatico!
-            if ([self.delegate respondsToSelector:@selector(routeTrackingEngineDidDetectOffRoute:atLocation:)]) {
-                [self.delegate routeTrackingEngineDidDetectOffRoute:self atLocation:location];
+
+        // Richiede almeno 6 fix consecutivi E almeno 3.0 secondi di deviazione confermata
+        NSTimeInterval timeOffRoute = now - _firstOffRouteTimestamp;
+        NSTimeInterval timeSinceLastTrigger = (_lastOffRouteTriggerTimestamp > 0) ? (now - _lastOffRouteTriggerTimestamp) : 999.0;
+
+        if (_offRouteConsecutiveCount >= 6 && timeOffRoute >= 3.0) {
+            // Applica debounce minimo di 15 secondi tra notifiche di fuori rotta
+            if (timeSinceLastTrigger >= 15.0) {
+                _lastOffRouteTriggerTimestamp = now;
+                if ([self.delegate respondsToSelector:@selector(routeTrackingEngineDidDetectOffRoute:atLocation:)]) {
+                    [self.delegate routeTrackingEngineDidDetectOffRoute:self atLocation:location];
+                }
             }
-            _offRouteConsecutiveCount = 0;
+            // Mantieni contatore parzialmente attivo senza azzerarlo a 0 per non ripetere il ciclo
+            _offRouteConsecutiveCount = 3;
         }
     }
 }
