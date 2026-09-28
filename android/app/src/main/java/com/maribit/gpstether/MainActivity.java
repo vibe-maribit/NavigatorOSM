@@ -33,6 +33,7 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
     private TextView tvCoordinates;
     private TextView tvSpeed;
     private TextView tvAccuracy;
+    private TextView tvAzimuth;
     private TextView tvPackets;
     private EditText etPort;
     private Button btnToggle;
@@ -73,8 +74,13 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
                 float speed = intent.getFloatExtra(GpsTetherService.EXTRA_SPEED, 0.0f);
                 float acc = intent.getFloatExtra(GpsTetherService.EXTRA_ACCURACY, 0.0f);
                 long packets = intent.getLongExtra(GpsTetherService.EXTRA_PACKETS, 0);
+                float az = intent.getFloatExtra(GpsTetherService.EXTRA_AZIMUTH, -1.0f);
+                float azAcc = intent.getFloatExtra(GpsTetherService.EXTRA_AZIMUTH_ACC, -1.0f);
 
                 applyLocationToUI(lat, lon, speed, acc, packets);
+                if (az >= 0.0f) {
+                    applyAzimuthToUI(az, azAcc);
+                }
             }
         }
     };
@@ -88,6 +94,7 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
         tvCoordinates = findViewById(R.id.tv_coordinates);
         tvSpeed = findViewById(R.id.tv_speed);
         tvAccuracy = findViewById(R.id.tv_accuracy);
+        tvAzimuth = findViewById(R.id.tv_azimuth);
         tvPackets = findViewById(R.id.tv_packets);
         etPort = findViewById(R.id.et_port);
         btnToggle = findViewById(R.id.btn_toggle);
@@ -189,6 +196,23 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
         ));
     }
 
+    @Override
+    public void onAzimuthUpdated(float azimuth, float azimuthAcc) {
+        runOnUiThread(() -> applyAzimuthToUI(azimuth, azimuthAcc));
+    }
+
+    private void applyAzimuthToUI(float azimuth, float azimuthAcc) {
+        if (tvAzimuth == null) return;
+        if (azimuth >= 0.0f) {
+            String text = (azimuthAcc >= 0.0f)
+                    ? String.format(Locale.US, "%.1f° (±%.1f°)", azimuth, azimuthAcc)
+                    : String.format(Locale.US, "%.1f°", azimuth);
+            tvAzimuth.setText(text);
+        } else {
+            tvAzimuth.setText("--.-°");
+        }
+    }
+
     private void applyLocationToUI(double lat, double lon, float speed, float acc, long packets) {
         tvCoordinates.setText(String.format(Locale.US, "%.5f, %.5f", lat, lon));
         tvSpeed.setText(String.format(Locale.US, "%.0f km/h", speed * 3.6f));
@@ -211,6 +235,9 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
             btnToggle.setText("▶ AVVIA TRASMISSIONE");
             btnToggle.setBackgroundColor(Color.parseColor("#00C853"));
             etPort.setEnabled(true);
+            if (tvAzimuth != null) {
+                tvAzimuth.setText("--.-°");
+            }
         }
     }
 

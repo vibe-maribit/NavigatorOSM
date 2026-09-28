@@ -9,6 +9,11 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.hardware.GeomagneticField;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -24,8 +29,12 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-public class GpsTetherService extends Service implements LocationListener {
+public class GpsTetherService extends Service implements LocationListener, SensorEventListener {
 
     private static final String TAG = "GpsTetherService";
     private static final String CHANNEL_ID = "GpsTetherChannel";
@@ -38,20 +47,33 @@ public class GpsTetherService extends Service implements LocationListener {
     public static final String EXTRA_ACCURACY = "accuracy";
     public static final String EXTRA_BEARING = "bearing";
     public static final String EXTRA_PACKETS = "packets";
+    public static final String EXTRA_AZIMUTH = "azimuth";
+    public static final String EXTRA_AZIMUTH_ACC = "azimuth_acc";
+
+    private static final long BROADCAST_INTERVAL_MS = 200; // 5 Hz
 
     public interface TetherListener {
         void onStateChanged(boolean running);
         void onLocationUpdated(Location location, long packetsSent);
+        void onAzimuthUpdated(float azimuth, float azimuthAcc);
     }
 
     private final IBinder binder = new LocalBinder();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private LocationManager locationManager;
+    private SensorManager sensorManager;
+    private Sensor rotationSensor;
+    private ScheduledExecutorService tickerExecutor;
     private PowerManager.WakeLock wakeLock;
     private GpsBroadcaster broadcaster;
     private volatile boolean isRunning = false;
     private Location lastLocation = null;
     private TetherListener listener = null;
+
+    private volatile float currentAzimuth = -1.0f;
+    private volatile float currentAzimuthAccuracy = -1.0f;
+    private volatile float currentDeclination = 0.0f;
+    private volatile boolean hasDeclination = false;
 
     public class LocalBinder extends Binder {
         public GpsTetherService getService() {
@@ -66,6 +88,9 @@ public class GpsTetherService extends Service implements LocationListener {
             if (lastLocation != null) {
                 listener.onLocationUpdated(lastLocation, getPacketsSent());
             }
+            if (currentAzimuth >= 0.0f) {
+                listener.onAzimuthUpdated(currentAzimuth, currentAzimuthAccuracy);
+            }
         }
     }
 
@@ -77,6 +102,7 @@ public class GpsTetherService extends Service implements LocationListener {
     public void onCreate() {
         super.onCreate();
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GPSTether::WakeLock");
@@ -111,16 +137,141 @@ public class GpsTetherService extends Service implements LocationListener {
             startForeground(NOTIFICATION_ID, notification);
         }
 
-        // 1. Controlla subito se c'è un'ultima posizione nota nella cache di sistema
+        // 1. Registra sensore di rotazione per bussola compensata da tilt
+        registerSensorListener();
+
+        // 2. Controlla subito se c'è un'ultima posizione nota nella cache di sistema
         queryAndEmitLastKnownLocation();
 
-        // 2. Registra tutti i provider disponibili per massima reattività
+        // 3. Registra tutti i provider disponibili per massima reattività
         registerLocationListeners();
+
+        // 4. Avvia ticker di trasmissione a 5 Hz (trasmette azimut anche da fermi riusando l'ultimo fix)
+        startBroadcastTicker();
 
         // Notifica listener dello stato attivo
         notifyStateChanged(true);
 
         Log.i(TAG, "GpsTetherService avviato su porta " + port);
+    }
+
+    private void registerSensorListener() {
+        if (sensorManager == null) return;
+        rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        if (rotationSensor == null) {
+            rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
+        }
+        if (rotationSensor != null) {
+            sensorManager.registerListener(this, rotationSensor, SensorManager.SENSOR_DELAY_UI);
+            Log.i(TAG, "Sensore rotazione registrato: " + rotationSensor.getName());
+        } else {
+            Log.w(TAG, "Nessun sensore di rotazione disponibile sul dispositivo");
+        }
+    }
+
+    private void unregisterSensorListener() {
+        if (sensorManager != null) {
+            try {
+                sensorManager.unregisterListener(this);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private synchronized void startBroadcastTicker() {
+        stopBroadcastTicker();
+        tickerExecutor = Executors.newSingleThreadScheduledExecutor();
+        tickerExecutor.scheduleAtFixedRate(this::broadcastTick, 0, BROADCAST_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private synchronized void stopBroadcastTicker() {
+        if (tickerExecutor != null) {
+            tickerExecutor.shutdownNow();
+            tickerExecutor = null;
+        }
+    }
+
+    private void broadcastTick() {
+        if (!isRunning) return;
+        Location loc = lastLocation;
+        if (loc == null || broadcaster == null) return;
+
+        broadcaster.broadcastLocation(loc, currentAzimuth, currentAzimuthAccuracy);
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event == null || event.values == null) return;
+        int type = event.sensor.getType();
+        if (type == Sensor.TYPE_ROTATION_VECTOR || type == Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR) {
+            float[] rotationMatrix = new float[9];
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
+
+            float[] orientationValues = new float[3];
+            SensorManager.getOrientation(rotationMatrix, orientationValues);
+
+            // orientationValues[0] è l'azimut in radianti [-PI, PI] (0 = Nord, PI/2 = Est)
+            double azDeg = Math.toDegrees(orientationValues[0]);
+            azDeg = (azDeg + 360.0) % 360.0;
+
+            // Correzione Nord Vero con declinazione magnetica se la posizione GPS è nota
+            if (hasDeclination) {
+                azDeg = (azDeg + currentDeclination + 360.0) % 360.0;
+            }
+
+            float accuracyDeg = -1.0f;
+            if (event.values.length > 4 && event.values[4] > 0) {
+                accuracyDeg = (float) Math.toDegrees(event.values[4]);
+            } else {
+                switch (event.accuracy) {
+                    case SensorManager.SENSOR_STATUS_ACCURACY_HIGH:
+                        accuracyDeg = 5.0f;
+                        break;
+                    case SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM:
+                        accuracyDeg = 10.0f;
+                        break;
+                    case SensorManager.SENSOR_STATUS_ACCURACY_LOW:
+                        accuracyDeg = 25.0f;
+                        break;
+                    case SensorManager.SENSOR_STATUS_UNRELIABLE:
+                    default:
+                        accuracyDeg = -1.0f;
+                        break;
+                }
+            }
+
+            currentAzimuth = (float) azDeg;
+            currentAzimuthAccuracy = accuracyDeg;
+
+            if (listener != null) {
+                final float finalAz = currentAzimuth;
+                final float finalAcc = currentAzimuthAccuracy;
+                mainHandler.post(() -> {
+                    if (listener != null) {
+                        listener.onAzimuthUpdated(finalAz, finalAcc);
+                    }
+                });
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+
+    private void updateDeclination(Location loc) {
+        if (loc == null) return;
+        try {
+            GeomagneticField field = new GeomagneticField(
+                    (float) loc.getLatitude(),
+                    (float) loc.getLongitude(),
+                    (float) loc.getAltitude(),
+                    loc.getTime() > 0 ? loc.getTime() : System.currentTimeMillis()
+            );
+            currentDeclination = field.getDeclination();
+            hasDeclination = true;
+            Log.d(TAG, "Declinazione magnetica aggiornata: " + currentDeclination + "°");
+        } catch (Exception e) {
+            Log.w(TAG, "Errore calcolo GeomagneticField: " + e.getMessage());
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -172,6 +323,9 @@ public class GpsTetherService extends Service implements LocationListener {
         if (!isRunning) return;
         isRunning = false;
 
+        stopBroadcastTicker();
+        unregisterSensorListener();
+
         try {
             if (locationManager != null) {
                 locationManager.removeUpdates(this);
@@ -186,6 +340,9 @@ public class GpsTetherService extends Service implements LocationListener {
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
         }
+
+        currentAzimuth = -1.0f;
+        currentAzimuthAccuracy = -1.0f;
 
         stopForeground(true);
         notifyStateChanged(false);
@@ -211,16 +368,18 @@ public class GpsTetherService extends Service implements LocationListener {
         }
 
         lastLocation = loc;
-
-        if (broadcaster != null) {
-            broadcaster.broadcastLocation(loc);
-        }
+        updateDeclination(loc);
 
         long packets = broadcaster != null ? broadcaster.getPacketsSent() : 0;
 
         // Aggiorna notifica persistente
         double speedKmh = loc.getSpeed() * 3.6;
-        String statusText = String.format("Velocità: %.0f km/h • Trasmessi: %d pacchetti", speedKmh, packets);
+        String statusText;
+        if (currentAzimuth >= 0.0f) {
+            statusText = String.format(Locale.US, "Velocità: %.0f km/h • Bussola: %.0f° • Trasmessi: %d", speedKmh, currentAzimuth, packets);
+        } else {
+            statusText = String.format(Locale.US, "Velocità: %.0f km/h • Trasmessi: %d pacchetti", speedKmh, packets);
+        }
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null && isRunning) {
             nm.notify(NOTIFICATION_ID, buildNotification(statusText));
@@ -244,6 +403,8 @@ public class GpsTetherService extends Service implements LocationListener {
         intent.putExtra(EXTRA_ACCURACY, loc.getAccuracy());
         intent.putExtra(EXTRA_BEARING, loc.getBearing());
         intent.putExtra(EXTRA_PACKETS, packets);
+        intent.putExtra(EXTRA_AZIMUTH, currentAzimuth);
+        intent.putExtra(EXTRA_AZIMUTH_ACC, currentAzimuthAccuracy);
         sendBroadcast(intent);
     }
 
@@ -268,7 +429,7 @@ public class GpsTetherService extends Service implements LocationListener {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("🛰️ GPS Tether v1.3.6 Attivo")
+                .setContentTitle("🛰️ GPS Tether v1.3.9 Attivo")
                 .setContentText(contentText)
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setContentIntent(pendingIntent)

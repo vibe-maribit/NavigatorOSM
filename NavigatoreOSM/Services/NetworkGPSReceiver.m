@@ -483,6 +483,14 @@
     double alt = dict[@"alt"] ? [dict[@"alt"] doubleValue] : 0.0;
     double acc = dict[@"acc"] ? [dict[@"acc"] doubleValue] : 3.5;
 
+    // Se bearing è assente (es. veicolo fermo) ed è presente l'azimut della bussola, usalo come direzione
+    if (bearing < 0 && dict[@"azimuth"]) {
+        double azimuth = [dict[@"azimuth"] doubleValue];
+        if (azimuth >= 0.0) {
+            bearing = azimuth;
+        }
+    }
+
     if (lat == 0 && lon == 0) return nil;
     if (outHeading) *outHeading = bearing;
 

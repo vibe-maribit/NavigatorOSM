@@ -25,7 +25,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.6"
+            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.9"
             android:textColor="#90A4AE"
             android:textSize="14sp"
             android:layout_marginTop="4dp" />
@@ -137,6 +137,26 @@
                     android:layout_height="wrap_content"
                     android:text="±-- m"
                     android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Azimut bussola:"
+                    android:textColor="#B0BEC5" />
+                <TextView
+                    android:id="@+id/tv_azimuth"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--.-°"
+                    android:textColor="#80D8FF"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout

@@ -116,7 +116,7 @@ Turn-by-turn offline speech synthesis.
 Solves the hardware GPS limitation on Wi-Fi-only iPads (A1432).
 - Opens an asynchronous BSD UDP socket bound to port `8888` managed by Grand Central Dispatch (`dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, ...)`).
 - **Multi-Format Ingestion**:
-  - Structured JSON: `{"lat": 45.464, "lon": 9.190, "speed": 13.5, "bearing": 90.0}`
+  - Structured JSON: `{"lat": 45.464, "lon": 9.190, "speed": 13.5, "bearing": 90.0, "azimuth": 87.5, "azimuthAcc": 10.0}` (supporta anche l'azimut bussola tilt-compensated a Nord Vero per l'allineamento da fermi dei visori VR Quest con *flutterAR* e come fallback heading per iPad a veicolo fermo).
   - CSV Format: `lat,lon,speed_kmh,bearing`
   - NMEA sentences: standard `$GPRMC` and `$GPGGA` sentences.
 - Synthesizes high-precision `CLLocation` objects that feed into `MKMapView` and the navigation engine identically to an internal hardware GPS chip.

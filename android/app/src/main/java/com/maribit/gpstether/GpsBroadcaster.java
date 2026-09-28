@@ -69,23 +69,48 @@ public class GpsBroadcaster {
         }
     }
 
+    public static String buildJsonPayload(double lat, double lon, float speed, float bearing, double alt, float acc, float azimuth, float azimuthAcc, long timestamp) {
+        if (azimuth >= 0.0f) {
+            float azAcc = azimuthAcc >= 0.0f ? azimuthAcc : 10.0f;
+            return String.format(Locale.US,
+                    "{\"lat\": %.6f, \"lon\": %.6f, \"speed\": %.2f, \"bearing\": %.1f, \"alt\": %.1f, \"acc\": %.1f, \"time\": %d, \"azimuth\": %.1f, \"azimuthAcc\": %.1f}\n",
+                    lat, lon,
+                    speed, bearing,
+                    alt, acc,
+                    timestamp,
+                    azimuth, azAcc);
+        } else {
+            return String.format(Locale.US,
+                    "{\"lat\": %.6f, \"lon\": %.6f, \"speed\": %.2f, \"bearing\": %.1f, \"alt\": %.1f, \"acc\": %.1f, \"time\": %d}\n",
+                    lat, lon,
+                    speed, bearing,
+                    alt, acc,
+                    timestamp);
+        }
+    }
+
+    public static String buildJsonPayload(Location loc, float azimuth, float azimuthAcc, long timestamp) {
+        if (loc == null) return null;
+        float speed = loc.hasSpeed() ? loc.getSpeed() : -1.0f;
+        float bearing = loc.hasBearing() ? loc.getBearing() : -1.0f;
+        double alt = loc.hasAltitude() ? loc.getAltitude() : 0.0;
+        float acc = loc.hasAccuracy() ? loc.getAccuracy() : 3.5f;
+
+        return buildJsonPayload(loc.getLatitude(), loc.getLongitude(), speed, bearing, alt, acc, azimuth, azimuthAcc, timestamp);
+    }
+
     public void broadcastLocation(Location loc) {
+        broadcastLocation(loc, -1.0f, -1.0f);
+    }
+
+    public void broadcastLocation(Location loc, float azimuth, float azimuthAcc) {
         if (!isRunning || loc == null) return;
 
         executor.execute(() -> {
             try {
-                // 1. Prepara Payload JSON nativo pulito
-                float speed = loc.hasSpeed() ? loc.getSpeed() : -1.0f;
-                float bearing = loc.hasBearing() ? loc.getBearing() : -1.0f;
-                double alt = loc.hasAltitude() ? loc.getAltitude() : 0.0;
-                float acc = loc.hasAccuracy() ? loc.getAccuracy() : 3.5f;
-
-                String json = String.format(Locale.US,
-                        "{\"lat\": %.6f, \"lon\": %.6f, \"speed\": %.2f, \"bearing\": %.1f, \"alt\": %.1f, \"acc\": %.1f, \"time\": %d}\n",
-                        loc.getLatitude(), loc.getLongitude(),
-                        speed, bearing,
-                        alt, acc,
-                        loc.getTime());
+                long now = System.currentTimeMillis();
+                String json = buildJsonPayload(loc, azimuth, azimuthAcc, now);
+                if (json == null) return;
 
                 byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
