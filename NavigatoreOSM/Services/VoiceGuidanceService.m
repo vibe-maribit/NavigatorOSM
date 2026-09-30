@@ -201,4 +201,14 @@ NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
     [self speakManeuver:instruction distanceInMeters:distance stepIndex:0];
 }
 
+#pragma mark - AVSpeechSynthesizerDelegate
+
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synthesizer didFinishSpeechUtterance:(AVSpeechUtterance *)utterance {
+    // Callback completamento pronuncia vocale
+}
+
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)synthesizer didCancelSpeechUtterance:(AVSpeechUtterance *)utterance {
+    // Callback cancellazione pronuncia vocale
+}
+
 @end

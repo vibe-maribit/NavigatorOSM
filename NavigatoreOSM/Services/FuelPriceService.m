@@ -73,7 +73,9 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
 
 - (NSString *)displayTitleForFuelType:(FuelType)type {
     double p = [self effectivePriceForFuelType:type];
-    NSString *bName = (self.brand && self.brand.length > 0) ? self.brand : (self.name ?: @"Distributore");
+    NSString *bName = (self.brand && [self.brand isKindOfClass:[NSString class]] && self.brand.length > 0)
+        ? self.brand
+        : ((self.name && [self.name isKindOfClass:[NSString class]]) ? self.name : @"Distributore");
     if (p > 0.1) {
         return [NSString stringWithFormat:@"⛽ %@ • %.3f €", bName, p];
     }
@@ -98,7 +100,7 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
         [parts addObject:[NSString stringWithFormat:@"GPL: %.3f€", self.lpgPrice]];
     }
 
-    if (self.address && self.address.length > 0) {
+    if (self.address && [self.address isKindOfClass:[NSString class]] && self.address.length > 0) {
         [parts addObject:self.address];
     }
 
@@ -119,9 +121,11 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
     if (self) {
         _station = station;
         _fuelType = fuelType;
-        self.coordinate = station.coordinate;
-        self.title = [station displayTitleForFuelType:fuelType];
-        self.subtitle = [station formattedSubtitle];
+        if (station && CLLocationCoordinate2DIsValid(station.coordinate)) {
+            self.coordinate = station.coordinate;
+        }
+        self.title = [station displayTitleForFuelType:fuelType] ?: @"⛽ Distributore";
+        self.subtitle = [station formattedSubtitle] ?: @"";
     }
     return self;
 }
@@ -415,7 +419,9 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
             NSArray *fuels = st[@"fuels"];
             if ([fuels isKindOfClass:[NSArray class]]) {
                 for (NSDictionary *f in fuels) {
-                    NSString *fuelName = [[f[@"name"] lowercaseString] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
+                    if (![f isKindOfClass:[NSDictionary class]]) continue;
+                    NSString *rawName = [f[@"name"] isKindOfClass:[NSString class]] ? f[@"name"] : @"";
+                    NSString *fuelName = [[rawName lowercaseString] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
                     double price = [f[@"price"] doubleValue];
                     if (price < 0.30 || price > 4.50) continue;
 
@@ -489,22 +495,21 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         [[NSUserDefaults standardUserDefaults] setObject:[NSDate date] forKey:kPrefOnlineFetchDate];
         [[NSUserDefaults standardUserDefaults] synchronize];
 
-        // Memorizza e unisci nella cache locale
-        NSMutableDictionary<NSNumber *, FuelStation *> *dict = [NSMutableDictionary dictionary];
-        for (FuelStation *s in self.cachedStations) {
-            dict[@(s.stationId)] = s;
-        }
-        for (FuelStation *s in stationList) {
-            dict[@(s.stationId)] = s;
-        }
-        self.cachedStations = [dict allValues];
-        [self saveCachedStationsToDisk];
-
-        NSLog(@"[FuelPriceService] MIMIT aggiornato: %lu distributori caricati. Medie: Benzina=%.3f, Diesel=%.3f, GPL=%.3f",
-              (unsigned long)stationList.count, avgPetrol, avgDiesel, avgLPG);
-
         dispatch_async(dispatch_get_main_queue(), ^{
-            [[NSNotificationCenter defaultCenter] postNotificationName:kFuelPricesUpdatedNotification object:self];
+            NSMutableDictionary<NSNumber *, FuelStation *> *dict = [NSMutableDictionary dictionary];
+            for (FuelStation *s in weakSelf.cachedStations) {
+                dict[@(s.stationId)] = s;
+            }
+            for (FuelStation *s in stationList) {
+                dict[@(s.stationId)] = s;
+            }
+            weakSelf.cachedStations = [dict allValues];
+            [weakSelf saveCachedStationsToDisk];
+
+            NSLog(@"[FuelPriceService] MIMIT aggiornato: %lu distributori caricati. Medie: Benzina=%.3f, Diesel=%.3f, GPL=%.3f",
+                  (unsigned long)stationList.count, avgPetrol, avgDiesel, avgLPG);
+
+            [[NSNotificationCenter defaultCenter] postNotificationName:kFuelPricesUpdatedNotification object:weakSelf];
             if (completion) {
                 completion(stationList, nil);
             }
@@ -562,14 +567,17 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
             double lon = [elem[@"lon"] doubleValue];
             if (lat == 0.0 && lon == 0.0) continue;
 
-            NSDictionary *tags = elem[@"tags"] ?: @{};
+            NSDictionary *tags = [elem[@"tags"] isKindOfClass:[NSDictionary class]] ? elem[@"tags"] : @{};
             FuelStation *st = [[FuelStation alloc] init];
             st.stationId = [elem[@"id"] longLongValue];
             st.coordinate = CLLocationCoordinate2DMake(lat, lon);
-            st.brand = tags[@"brand"] ?: tags[@"operator"] ?: tags[@"name"];
-            st.name = tags[@"name"] ?: st.brand ?: @"Distributore";
-            NSString *street = tags[@"addr:street"];
-            NSString *housenumber = tags[@"addr:housenumber"];
+            NSString *bTag = [tags[@"brand"] isKindOfClass:[NSString class]] ? tags[@"brand"] :
+                             ([tags[@"operator"] isKindOfClass:[NSString class]] ? tags[@"operator"] :
+                             ([tags[@"name"] isKindOfClass:[NSString class]] ? tags[@"name"] : nil));
+            st.brand = bTag;
+            st.name = [tags[@"name"] isKindOfClass:[NSString class]] ? tags[@"name"] : (bTag ?: @"Distributore");
+            NSString *street = [tags[@"addr:street"] isKindOfClass:[NSString class]] ? tags[@"addr:street"] : nil;
+            NSString *housenumber = [tags[@"addr:housenumber"] isKindOfClass:[NSString class]] ? tags[@"addr:housenumber"] : nil;
             if (street && housenumber) {
                 st.address = [NSString stringWithFormat:@"%@, %@", street, housenumber];
             } else if (street) {
@@ -720,8 +728,17 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 - (NSArray<FuelStationAnnotation *> *)annotationsForCachedStations {
     NSMutableArray *list = [NSMutableArray array];
     FuelType curType = self.selectedFuelType;
-    for (FuelStation *st in self.cachedStations) {
+    NSArray<FuelStation *> *stations = self.cachedStations;
+    NSUInteger count = 0;
+    for (FuelStation *st in stations) {
+        if (!st || !CLLocationCoordinate2DIsValid(st.coordinate) || (fabs(st.coordinate.latitude) < 0.1 && fabs(st.coordinate.longitude) < 0.1)) {
+            continue;
+        }
         [list addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:curType]];
+        count++;
+        if (count >= 45) { // Limita a 45 per non sovraccaricare i 512MB RAM dell'iPad Mini 1
+            break;
+        }
     }
     return list;
 }

@@ -48,17 +48,19 @@
 
 - (void)setAnnotation:(id<MKAnnotation>)annotation {
     [super setAnnotation:annotation];
-    if ([annotation isKindOfClass:[FuelStationAnnotation class]]) {
+    if (self.titleLabel && [annotation isKindOfClass:[FuelStationAnnotation class]]) {
         FuelStationAnnotation *fAnn = (FuelStationAnnotation *)annotation;
         [self updateWithStation:fAnn.station fuelType:fAnn.fuelType];
     }
 }
 
 - (void)updateWithStation:(FuelStation *)station fuelType:(FuelType)type {
-    if (!station) return;
+    if (!station || !self.titleLabel) return;
 
     double p = [station effectivePriceForFuelType:type];
-    NSString *bName = (station.brand && station.brand.length > 0) ? station.brand : (station.name ?: @"Distributore");
+    NSString *bName = (station.brand && [station.brand isKindOfClass:[NSString class]] && station.brand.length > 0)
+        ? station.brand
+        : ((station.name && [station.name isKindOfClass:[NSString class]]) ? station.name : @"Distributore");
 
     // Limita lunghezza brand per il badge
     if (bName.length > 8) {
@@ -71,10 +73,15 @@
         self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@", bName];
     }
 
-    // Calcola dimensione dinamica del pill
-    CGSize fitSize = [self.titleLabel.text sizeWithAttributes:@{NSFontAttributeName: self.titleLabel.font}];
+    // Calcola dimensione dinamica del pill in modo sicuro
+    UIFont *font = self.titleLabel.font ?: [UIFont boldSystemFontOfSize:11.5];
+    NSString *txt = self.titleLabel.text ?: @"⛽ Distributore";
+    CGSize fitSize = [txt sizeWithAttributes:@{NSFontAttributeName: font}];
     CGFloat width = MAX(74.0, fitSize.width + 18.0);
-    self.frame = CGRectMake(0, 0, width, 28);
+
+    // In MapKit su iOS 9, aggiorniamo solo i bounds e il centerOffset,
+    // preservando la coordinata del centro gestita dalla mappa!
+    self.bounds = CGRectMake(0, 0, width, 28);
     self.pillContainer.frame = self.bounds;
     self.titleLabel.frame = CGRectMake(4, 2, width - 8, 24);
     self.centerOffset = CGPointMake(0, -14);

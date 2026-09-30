@@ -1657,11 +1657,22 @@
 }
 
 - (void)updateFuelAnnotationsOnMap {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self updateFuelAnnotationsOnMap];
+        });
+        return;
+    }
+
+    if (!self.mapView) return;
+
     if (!self.fuelAnnotations) {
         self.fuelAnnotations = [NSMutableArray array];
     }
-    [self.mapView removeAnnotations:self.fuelAnnotations];
-    [self.fuelAnnotations removeAllObjects];
+    if (self.fuelAnnotations.count > 0) {
+        [self.mapView removeAnnotations:self.fuelAnnotations];
+        [self.fuelAnnotations removeAllObjects];
+    }
 
     if (![self shouldShowFuelStationsOnMap]) {
         return;
