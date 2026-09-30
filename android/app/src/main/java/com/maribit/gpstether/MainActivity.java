@@ -88,6 +88,12 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Anti-tapjacking per banche e Google Wallet: impedisce la visualizzazione di finestre overlay
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getWindow().setHideOverlayWindows(true);
+        }
+
         setContentView(R.layout.activity_main);
 
         tvStatus = findViewById(R.id.tv_status);
