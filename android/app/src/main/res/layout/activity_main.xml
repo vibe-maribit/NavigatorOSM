@@ -25,7 +25,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.9"
+            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.12"
             android:textColor="#90A4AE"
             android:textSize="14sp"
             android:layout_marginTop="4dp" />
@@ -51,6 +51,48 @@
                 android:textAlignment="center" />
         </LinearLayout>
 
+        <!-- Card Indirizzo IP Streaming -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#171C26"
+            android:padding="16dp"
+            android:layout_marginTop="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌐 INDIRIZZO IP STREAMING (HOTSPOT)"
+                    android:textColor="#64B5F6"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_ip_address"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Rilevamento IP in corso..."
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginTop="6dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Inserisci questo IP su NavigatoreOSM > Impostazioni > GPS se la ricezione automatica non si aggancia."
+                android:textColor="#90A4AE"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
         <!-- Pulsante START/STOP -->
         <Button
             android:id="@+id/btn_toggle"
@@ -61,7 +103,7 @@
             android:textSize="18sp"
             android:textStyle="bold"
             android:background="#00C853"
-            android:layout_marginTop="20dp" />
+            android:layout_marginTop="16dp" />
 
         <!-- Card Statistiche GPS in tempo reale -->
         <LinearLayout

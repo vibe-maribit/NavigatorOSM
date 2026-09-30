@@ -8,13 +8,18 @@ import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InterfaceAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -30,6 +35,8 @@ public class GpsBroadcaster {
     private DatagramSocket udpSocket;
     private ServerSocket tcpServerSocket;
     private final List<Socket> connectedTcpClients = Collections.synchronizedList(new ArrayList<>());
+    private final List<InetAddress> cachedBroadcastAddresses = new ArrayList<>();
+    private long lastBroadcastAddressRefresh = 0;
     private volatile boolean isRunning = false;
 
     public GpsBroadcaster(int port) {
@@ -103,6 +110,40 @@ public class GpsBroadcaster {
         broadcastLocation(loc, -1.0f, -1.0f);
     }
 
+    private List<InetAddress> getBroadcastAddresses() {
+        long now = System.currentTimeMillis();
+        if (now - lastBroadcastAddressRefresh < 4000 && !cachedBroadcastAddresses.isEmpty()) {
+            return cachedBroadcastAddresses;
+        }
+        lastBroadcastAddressRefresh = now;
+        Set<InetAddress> set = new HashSet<>();
+        try {
+            set.add(InetAddress.getByName("255.255.255.255"));
+            try {
+                set.add(InetAddress.getByName("192.168.43.255"));
+            } catch (Exception ignored) {}
+
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces != null) {
+                while (interfaces.hasMoreElements()) {
+                    NetworkInterface iface = interfaces.nextElement();
+                    if (!iface.isUp() || iface.isLoopback()) continue;
+                    for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
+                        InetAddress bcast = ifaceAddr.getBroadcast();
+                        if (bcast != null) {
+                            set.add(bcast);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Errore risoluzione indirizzi broadcast: " + e.getMessage());
+        }
+        cachedBroadcastAddresses.clear();
+        cachedBroadcastAddresses.addAll(set);
+        return cachedBroadcastAddresses;
+    }
+
     public void broadcastLocation(Location loc, float azimuth, float azimuthAcc) {
         if (!isRunning || loc == null) return;
 
@@ -114,10 +155,14 @@ public class GpsBroadcaster {
 
                 byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
-                // 2. Invia via UDP Broadcast globale
+                // 2. Invia via UDP Broadcast su tutte le subnet attive (Hotspot ap0, Wi-Fi wlan0 e globale)
                 if (udpSocket != null && !udpSocket.isClosed()) {
-                    InetAddress globalBroadcast = InetAddress.getByName("255.255.255.255");
-                    udpSocket.send(new DatagramPacket(jsonBytes, jsonBytes.length, globalBroadcast, port));
+                    List<InetAddress> targets = getBroadcastAddresses();
+                    for (InetAddress target : targets) {
+                        try {
+                            udpSocket.send(new DatagramPacket(jsonBytes, jsonBytes.length, target, port));
+                        } catch (Exception ignored) {}
+                    }
                 }
 
                 // 3. Invia ai client TCP connessi

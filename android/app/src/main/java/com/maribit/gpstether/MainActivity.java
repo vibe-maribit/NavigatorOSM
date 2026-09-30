@@ -13,6 +13,8 @@ import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.text.TextUtils;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -23,13 +25,21 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements GpsTetherService.TetherListener {
 
+    private static final String TAG = "MainActivity";
     private static final int PERMISSION_REQUEST_CODE = 100;
 
     private TextView tvStatus;
+    private TextView tvIpAddress;
     private TextView tvCoordinates;
     private TextView tvSpeed;
     private TextView tvAccuracy;
@@ -88,15 +98,10 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Anti-tapjacking per banche e Google Wallet: impedisce la visualizzazione di finestre overlay
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getWindow().setHideOverlayWindows(true);
-        }
-
         setContentView(R.layout.activity_main);
 
         tvStatus = findViewById(R.id.tv_status);
+        tvIpAddress = findViewById(R.id.tv_ip_address);
         tvCoordinates = findViewById(R.id.tv_coordinates);
         tvSpeed = findViewById(R.id.tv_speed);
         tvAccuracy = findViewById(R.id.tv_accuracy);
@@ -107,7 +112,14 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
 
         btnToggle.setOnClickListener(v -> onToggleClicked());
 
+        updateIpAddressDisplay();
         checkAndRequestPermissions();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateIpAddressDisplay();
     }
 
     @Override
@@ -245,6 +257,58 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
                 tvAzimuth.setText("--.-°");
             }
         }
+        updateIpAddressDisplay();
+    }
+
+    private void updateIpAddressDisplay() {
+        if (tvIpAddress == null) return;
+        String portStr = (etPort != null && !TextUtils.isEmpty(etPort.getText()))
+                ? etPort.getText().toString().trim()
+                : "8888";
+
+        List<String> wifiList = new ArrayList<>();
+        String hotspotIp = null;
+
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces != null) {
+                while (interfaces.hasMoreElements()) {
+                    NetworkInterface iface = interfaces.nextElement();
+                    if (!iface.isUp() || iface.isLoopback()) continue;
+                    String ifName = iface.getName().toLowerCase(Locale.US);
+                    Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                    while (addresses.hasMoreElements()) {
+                        InetAddress addr = addresses.nextElement();
+                        if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
+                            String host = addr.getHostAddress();
+                            if (host != null && !host.startsWith("127.") && !host.startsWith("169.254.")) {
+                                if (host.startsWith("192.168.43.") || ifName.contains("ap") || ifName.contains("wlan1") || ifName.contains("tether")) {
+                                    hotspotIp = host;
+                                } else {
+                                    wifiList.add(host);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Errore lettura IP: " + e.getMessage());
+        }
+
+        StringBuilder sb = new StringBuilder();
+        if (hotspotIp != null) {
+            sb.append("Hotspot: ").append(hotspotIp).append(" (Porta ").append(portStr).append(")");
+            if (!wifiList.isEmpty()) {
+                sb.append(" • Wi-Fi: ").append(TextUtils.join(", ", wifiList));
+            }
+        } else if (!wifiList.isEmpty()) {
+            sb.append("IP Wi-Fi: ").append(TextUtils.join(", ", wifiList)).append(" (Porta ").append(portStr).append(")");
+        } else {
+            sb.append("Hotspot non attivo (attiva Hotspot su Android)");
+        }
+
+        tvIpAddress.setText(sb.toString());
     }
 
     private boolean hasPermissions() {

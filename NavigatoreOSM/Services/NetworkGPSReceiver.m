@@ -104,11 +104,23 @@
 }
 
 - (void)startWithSavedSettings {
-    // Se l'host non è configurato o è predefinito, controlla se c'è un gateway rilevato migliore
-    if (!self.tcpHost || [self.tcpHost isEqualToString:@"127.0.0.1"]) {
-        NSString *gw = [NetworkGPSReceiver defaultGatewayIP];
+    NSString *gw = [NetworkGPSReceiver defaultGatewayIP];
+    // Se l'host non è configurato, è localhost, o è collegato a Hotspot Android (192.168.43.1):
+    if (!self.tcpHost || [self.tcpHost isEqualToString:@"127.0.0.1"] || [self.tcpHost isEqualToString:@"0.0.0.0"]) {
         if (gw && gw.length > 0) {
             self.tcpHost = gw;
+        }
+    } else if (gw && [gw isEqualToString:@"192.168.43.1"]) {
+        // Rete Hotspot standard Android rilevata: allinea sempre al gateway Hotspot
+        self.tcpHost = gw;
+    } else if (gw && gw.length > 0) {
+        // Se siamo su una subnet differente rispetto a quella salvata
+        NSArray *gwParts = [gw componentsSeparatedByString:@"."];
+        NSArray *hostParts = [self.tcpHost componentsSeparatedByString:@"."];
+        if (gwParts.count == 4 && hostParts.count == 4) {
+            if (![gwParts[0] isEqualToString:hostParts[0]] || ![gwParts[1] isEqualToString:hostParts[1]] || ![gwParts[2] isEqualToString:hostParts[2]]) {
+                self.tcpHost = gw;
+            }
         }
     }
 
@@ -215,7 +227,13 @@
         NSString *message = [NSString stringWithUTF8String:buffer];
         if (message) {
             NSString *senderIP = [NSString stringWithUTF8String:inet_ntoa(clientAddr.sin_addr)];
-            [self processReceivedPayload:message senderIP:senderIP streamType:@"UDP"];
+            NSArray *lines = [message componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+            for (NSString *rawLine in lines) {
+                NSString *line = [rawLine stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (line.length > 0) {
+                    [self processReceivedPayload:line senderIP:senderIP streamType:@"UDP"];
+                }
+            }
         }
     }
 }
@@ -357,8 +375,15 @@
 
     if (!parsedLocation) return;
 
-    // Filtro di accuratezza: scarta fix scadenti (es. triangolazione celle 100m+)
-    if (parsedLocation.horizontalAccuracy > 35.0) {
+    // Registra statistiche di ricezione fisica del pacchetto per la diagnostica live
+    self.packetsReceivedCount++;
+    self.lastPacketTimestamp = [NSDate date];
+    self.lastSenderIP = senderIP ?: @"127.0.0.1";
+    self.lastStreamType = streamType ?: @"NET";
+
+    // Filtro di accuratezza: scarta fix scadenti (es. triangolazione celle 100m+).
+    // Soglia a 65.0m per consentire aggancio anche nei test indoor e in avvio prima del fix satellitare stretto.
+    if (parsedLocation.horizontalAccuracy > 65.0) {
         return;
     }
 
@@ -440,11 +465,6 @@
 
     _lastDispatchedLocation = cleanedLocation;
     _lastDispatchTime = now;
-
-    self.packetsReceivedCount++;
-    self.lastPacketTimestamp = [NSDate date];
-    self.lastSenderIP = senderIP ?: @"127.0.0.1";
-    self.lastStreamType = streamType ?: @"NET";
     self.lastLocation = cleanedLocation;
 
     dispatch_async(dispatch_get_main_queue(), ^{
