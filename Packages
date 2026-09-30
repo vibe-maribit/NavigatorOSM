@@ -29,10 +29,10 @@ Depiction: https://vibe-maribit.github.io/NavigatorOSM/
 Version: 1.3.10-1
 Installed-Size: 544
 Filename: ./debs/com.nicola.navigatoreosm_1.3.10-1_iphoneos-arm.deb
-Size: 183574
-MD5sum: c1717f196b887f4373dfcd7518e04a45
-SHA1: 491628d30ef83cf163d06944b26e655a57b776fc
-SHA256: 7c22256364fd5c7daad1e7a9ffcc137e58a9c68a89b119c630ffa22b939dc558
+Size: 183486
+MD5sum: 06a18cf921002a76428c19ada49bb5df
+SHA1: 3586da9b7d1179d8f10b58ccd147f281787a7026
+SHA256: b7a13dfd8adf0297bf938021b6f1326eadb17bdca8c2ff45f603f2c460c3f7d1
 
 Package: com.nicola.navigatoreosm
 Name: NavigatorOSM
