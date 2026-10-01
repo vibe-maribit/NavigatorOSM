@@ -346,8 +346,8 @@
     // SEZIONE 0: Versione Software
     if (indexPath.section == 0) {
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.13";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.13";
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.14";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.14";
 
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"APP_VERSION", @"Versione Applicazione");

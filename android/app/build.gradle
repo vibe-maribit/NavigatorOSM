@@ -10,8 +10,8 @@ android {
         applicationId "com.maribit.gpstether"
         minSdk 21
         targetSdk 34
-        versionCode 8
-        versionName "1.3.13"
+        versionCode 9
+        versionName "1.3.14"
     }
 
     signingConfigs {

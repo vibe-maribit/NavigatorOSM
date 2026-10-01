@@ -57,7 +57,7 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
         // Prepara la sessione HTTP con User-Agent conforme e throughput multi-socket aumentato
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.13 (iPad Mini 1; iOS 9.3.5; TileEngine)"
+            @"User-Agent": @"NavigatoreOSM/1.3.14 (iPad Mini 1; iOS 9.3.5; TileEngine)"
         };
         config.timeoutIntervalForRequest = 8.0;
         config.HTTPMaximumConnectionsPerHost = 6;
