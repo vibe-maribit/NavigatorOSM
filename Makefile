@@ -31,7 +31,7 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Views/SpeedCameraAnnotationView.m \
                       NavigatoreOSM/Views/FuelStationAnnotationView.m
 
-NavigatoreOSM_FRAMEWORKS = UIKit Foundation CoreGraphics CoreLocation MapKit AVFoundation QuartzCore
+NavigatoreOSM_FRAMEWORKS = UIKit Foundation CoreGraphics CoreLocation MapKit AVFoundation QuartzCore AudioToolbox
 NavigatoreOSM_CFLAGS = -fobjc-arc -INavigatoreOSM -O2
 
 include $(THEOS_MAKE_PATH)/application.mk

@@ -20,6 +20,7 @@
 #import "../Services/SpeedCameraService.h"
 #import "../Views/SpeedCameraAnnotationView.h"
 #import "../Views/FuelStationAnnotationView.h"
+#import <AudioToolbox/AudioToolbox.h>
 
 @interface NavigationViewController () <SearchViewControllerDelegate, NetworkGPSReceiverDelegate, RouteSelectorViewDelegate, QuickPOIShelfViewDelegate, SettingsViewControllerDelegate, POIResultsCardViewDelegate, RouteSummaryViewControllerDelegate, RouteTrackingEngineDelegate, UIGestureRecognizerDelegate>
 
@@ -185,8 +186,8 @@
                                                  name:UIApplicationWillEnterForegroundNotification
                                                object:nil];
 
-    // Messaggio vocale di avvio
-    [[VoiceGuidanceService sharedService] speak:NLString(@"READY_3D", @"Navigatore pronto con visuale 3D prospettica.")];
+    // Splash screen e chime di benvenuto (evita voce sintetica all'avvio)
+    [self showWelcomeSplashScreen];
 
     // Aggiornamento prezzi carburanti online MIMIT in background
     [[FuelPriceService sharedService] fetchOnlinePricesAroundCoordinate:CLLocationCoordinate2DMake(45.4642, 9.1900) completion:nil];
@@ -716,6 +717,67 @@
                 self.toastLabel.hidden = YES;
             }];
         });
+    }];
+}
+
+- (void)showWelcomeSplashScreen {
+    // 1. Chime di benvenuto delicato (System Sound 1104 - Tink)
+    AudioServicesPlaySystemSound(1104);
+
+    // 2. Elegante Splash View centrale flottante
+    CGFloat w = self.view.bounds.size.width;
+    CGFloat h = self.view.bounds.size.height;
+    CGFloat splashW = MIN(320.0, w - 48.0);
+    CGFloat splashH = 124.0;
+
+    UIView *splashView = [[UIView alloc] initWithFrame:CGRectMake((w - splashW) / 2.0, (h - splashH) / 2.0 - 24.0, splashW, splashH)];
+    splashView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+    splashView.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.92];
+    splashView.layer.cornerRadius = 20.0;
+    splashView.layer.borderColor = [[UIColor colorWithRed:0.25 green:0.65 blue:1.0 alpha:0.8] CGColor];
+    splashView.layer.borderWidth = 1.5;
+    splashView.layer.shadowColor = [[UIColor blackColor] CGColor];
+    splashView.layer.shadowOpacity = 0.6;
+    splashView.layer.shadowRadius = 12.0;
+    splashView.layer.shadowOffset = CGSizeMake(0, 4);
+    splashView.alpha = 0.0;
+    splashView.transform = CGAffineTransformMakeScale(0.92, 0.92);
+
+    UILabel *iconLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 14, splashW, 30)];
+    iconLabel.text = @"🧭";
+    iconLabel.font = [UIFont systemFontOfSize:26.0];
+    iconLabel.textAlignment = NSTextAlignmentCenter;
+    [splashView addSubview:iconLabel];
+
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 48, splashW - 32, 24)];
+    titleLabel.text = @"NavigatorOSM";
+    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.font = [UIFont boldSystemFontOfSize:19.0];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    [splashView addSubview:titleLabel];
+
+    UILabel *subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 74, splashW - 32, 36)];
+    subtitleLabel.text = NLString(@"WELCOME_SPLASH", @"Pronto per la navigazione");
+    subtitleLabel.textColor = [UIColor colorWithRed:0.35 green:0.80 blue:1.0 alpha:1.0];
+    subtitleLabel.font = [UIFont systemFontOfSize:13.0];
+    subtitleLabel.textAlignment = NSTextAlignmentCenter;
+    subtitleLabel.numberOfLines = 2;
+    [splashView addSubview:subtitleLabel];
+
+    [self.view addSubview:splashView];
+
+    // Animazione di apparizione morbida (fade-in + pop)
+    [UIView animateWithDuration:0.3 delay:0.1 options:UIViewAnimationOptionCurveEaseOut animations:^{
+        splashView.alpha = 1.0;
+        splashView.transform = CGAffineTransformIdentity;
+    } completion:^(BOOL finished) {
+        // Dissolvenza automatica dopo 1.3 secondi
+        [UIView animateWithDuration:0.4 delay:1.3 options:UIViewAnimationOptionCurveEaseIn animations:^{
+            splashView.alpha = 0.0;
+            splashView.transform = CGAffineTransformMakeScale(1.04, 1.04);
+        } completion:^(BOOL fin) {
+            [splashView removeFromSuperview];
+        }];
     }];
 }
 
