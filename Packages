@@ -83,10 +83,46 @@ Depiction: https://vibe-maribit.github.io/NavigatorOSM/
 Version: 1.3.13-1
 Installed-Size: 544
 Filename: ./debs/com.nicola.navigatoreosm_1.3.13-1_iphoneos-arm.deb
-Size: 186164
-MD5sum: f4256f1957387034c0dda9ab2543d812
-SHA1: 1d97c01178abfd3448c939b8c88bfafc5fa60fb2
-SHA256: 32fe6ed8b0d52931f5957b89fa4e384999c4e125c5c6c49160cf492106244f7f
+Size: 186180
+MD5sum: aae2592a77592970eed17d4a7deea144
+SHA1: f3371c3c397918df44d043c8bd7f8ddcdbd6efdc
+SHA256: 3e7b7ad8ad445938980fbc06f85ec4a34de7b4f68403dd065a080e1ebc27a374
+
+Package: com.nicola.navigatoreosm
+Name: NavigatorOSM
+Depends: firmware (>= 9.0)
+Architecture: iphoneos-arm
+Description: Navigatore GPS Nativo per iPad Mini con OpenStreetMap
+Maintainer: Nicola
+Author: Nicola
+Section: Applications
+Icon: https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png
+Depiction: https://vibe-maribit.github.io/NavigatorOSM/
+Version: 1.3.13-2
+Installed-Size: 548
+Filename: ./debs/com.nicola.navigatoreosm_1.3.13-2_iphoneos-arm.deb
+Size: 187292
+MD5sum: af264128eec77c21c459562152e386cd
+SHA1: 3cb559541cab9379ad9bafab02cf714faa262f95
+SHA256: bbd2858c949e6c26833c2d1b3e7afe8c820ad4bda25c3a8d11a468993a6a146f
+
+Package: com.nicola.navigatoreosm
+Name: NavigatorOSM
+Depends: firmware (>= 9.0)
+Architecture: iphoneos-arm
+Description: Navigatore GPS Nativo per iPad Mini con OpenStreetMap
+Maintainer: Nicola
+Author: Nicola
+Section: Applications
+Icon: https://vibe-maribit.github.io/NavigatorOSM/CydiaIcon.png
+Depiction: https://vibe-maribit.github.io/NavigatorOSM/
+Version: 1.3.14-1
+Installed-Size: 548
+Filename: ./debs/com.nicola.navigatoreosm_1.3.14-1_iphoneos-arm.deb
+Size: 187330
+MD5sum: f0faef53ec1c53d66f3a497b402d567f
+SHA1: 9baa977e6457801d6485803d1b40574ebe89364f
+SHA256: 0b2b9abfada22af48dc29d47a990b3862618a67d8327d466cfa29e98da0bbdeb
 
 Package: com.nicola.navigatoreosm
 Name: NavigatorOSM
