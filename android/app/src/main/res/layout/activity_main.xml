@@ -25,7 +25,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.14"
+            android:text="Condivisione GPS per iPad NavigatoreOSM • v1.3.15"
             android:textColor="#90A4AE"
             android:textSize="14sp"
             android:layout_marginTop="4dp" />
@@ -104,6 +104,18 @@
             android:textStyle="bold"
             android:background="#00C853"
             android:layout_marginTop="16dp" />
+
+        <!-- Pulsante Chiudi / Esci dall'App -->
+        <Button
+            android:id="@+id/btn_exit"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="⏻ CHIUDI APPLICAZIONE"
+            android:textColor="#EF5350"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:background="#261E1E"
+            android:layout_marginTop="10dp" />
 
         <!-- Card Statistiche GPS in tempo reale -->
         <LinearLayout

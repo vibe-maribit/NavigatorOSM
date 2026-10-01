@@ -57,7 +57,7 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
         // Prepara la sessione HTTP con User-Agent conforme e throughput multi-socket aumentato
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.14 (iPad Mini 1; iOS 9.3.5; TileEngine)"
+            @"User-Agent": @"NavigatoreOSM/1.3.15 (iPad Mini 1; iOS 9.3.5; TileEngine)"
         };
         config.timeoutIntervalForRequest = 8.0;
         config.HTTPMaximumConnectionsPerHost = 6;
@@ -121,7 +121,7 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
             // OpenStreetMap Standard con round-robin su {a,b,c}.tile.openstreetmap.org
             // per moltiplicare i socket TCP e superare i limiti di connessione per singolo host
             static const char cdnSubdomains[] = "abc";
-            char sub = cdnSubdomains[((NSUInteger)path.x + (NSUInteger)path.y) % 3];
+            char sub = cdnSubdomains[(labs((long)path.x) + labs((long)path.y)) % 3];
             NSString *urlStr = [NSString stringWithFormat:@"https://%c.tile.openstreetmap.org/%ld/%ld/%ld.png",
                                 sub, (long)path.z, (long)path.x, (long)path.y];
             return [NSURL URLWithString:urlStr];
@@ -161,6 +161,8 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
 }
 
 - (void)loadTileAtPath:(MKTileOverlayPath)path result:(void (^)(NSData *tileData, NSError *error))result {
+    if (!result) return;
+
     NSString *cacheKey = [self cacheKeyForPath:path theme:self.theme];
 
     // 1. Cache RAM: se presente in memoria, restituisci all'istante (0.1 ms)
@@ -170,16 +172,18 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
         return;
     }
 
-    // 2. Cache su disco: lettura diretta ottimizzata con NSDataReadingMappedIfSafe
+    // 2. Cache su disco: lettura sicura heap con NSData dataWithContentsOfFile (immune da SIGBUS)
     NSString *filePath = [self tileFilePathForPath:path theme:self.theme];
-    NSData *diskData = [NSData dataWithContentsOfFile:filePath options:NSDataReadingMappedIfSafe error:nil];
-    if (diskData && diskData.length > 0) {
-        [self.memoryCache setObject:diskData forKey:cacheKey];
-        result(diskData, nil);
-        return;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
+        NSData *diskData = [NSData dataWithContentsOfFile:filePath];
+        if (diskData && diskData.length > 0) {
+            [self.memoryCache setObject:diskData forKey:cacheKey];
+            result(diskData, nil);
+            return;
+        }
     }
 
-    // 3. Altrimenti, scarica la tile dal server con PRIORITÀ ALTA (tile attualmente a schermo!)
+    // 3. Altrimenti, scarica la tile dal server
     NSURL *tileURL = [self URLForTilePath:path];
     if (!tileURL) {
         result(nil, [NSError errorWithDomain:@"OSMTileOverlayError" code:-1 userInfo:nil]);
@@ -204,7 +208,6 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
             result(nil, error);
         }
     }];
-    task.priority = NSURLSessionTaskPriorityHigh; // Priorità massima per la visuale attiva dell'utente
     [task resume];
 }
 
@@ -231,11 +234,8 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
     }
 
     __weak OSMTileOverlay *weakSelf = self;
-    NSBlockOperation *op = [[NSBlockOperation alloc] init];
-    __weak NSBlockOperation *weakOp = op;
-
-    [op addExecutionBlock:^{
-        if (weakOp.isCancelled) {
+    __block NSBlockOperation *op = [NSBlockOperation blockOperationWithBlock:^{
+        if (op.isCancelled) {
             @synchronized (weakSelf.prefetchInProgressKeys) {
                 [weakSelf.prefetchInProgressKeys removeObject:cacheKey];
             }
@@ -254,7 +254,6 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
                 [weakSelf.prefetchInProgressKeys removeObject:cacheKey];
             }
         }];
-        task.priority = NSURLSessionTaskPriorityLow; // Bassa priorità per non intralciare le tile a schermo
         [task resume];
     }];
 

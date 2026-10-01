@@ -47,6 +47,7 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
     private TextView tvPackets;
     private EditText etPort;
     private Button btnToggle;
+    private Button btnExit;
 
     private GpsTetherService tetherService;
     private boolean isBound = false;
@@ -109,11 +110,45 @@ public class MainActivity extends AppCompatActivity implements GpsTetherService.
         tvPackets = findViewById(R.id.tv_packets);
         etPort = findViewById(R.id.et_port);
         btnToggle = findViewById(R.id.btn_toggle);
+        btnExit = findViewById(R.id.btn_exit);
 
         btnToggle.setOnClickListener(v -> onToggleClicked());
+        btnExit.setOnClickListener(v -> onExitClicked());
 
         updateIpAddressDisplay();
         checkAndRequestPermissions();
+    }
+
+    private void onExitClicked() {
+        Log.i(TAG, "Chiusura totale richiesta dall'utente");
+        try {
+            if (tetherService != null) {
+                tetherService.stopTethering();
+                tetherService.removeListener();
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            Intent intent = new Intent(this, GpsTetherService.class);
+            stopService(intent);
+        } catch (Exception ignored) {}
+
+        if (isBound) {
+            try {
+                unbindService(serviceConnection);
+            } catch (Exception ignored) {}
+            isBound = false;
+        }
+
+        try {
+            unregisterReceiver(locationReceiver);
+        } catch (Exception ignored) {}
+
+        finishAffinity();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask();
+        }
+        System.exit(0);
     }
 
     @Override
