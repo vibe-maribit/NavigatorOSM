@@ -109,6 +109,13 @@
     self.mapView.delegate = self;
     self.mapView.showsUserLocation = YES;
 
+    // Edifici 3D (palazzi estrusi): disattivati di default per massime prestazioni su Apple A5 / iPad Mini 1
+    BOOL showBuildings = NO;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"Show3DBuildings"] != nil) {
+        showBuildings = [[NSUserDefaults standardUserDefaults] boolForKey:@"Show3DBuildings"];
+    }
+    self.mapView.showsBuildings = showBuildings;
+
     // Long-press per impostare rapidamente una destinazione toccando la mappa
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapLongPress:)];
     longPress.minimumPressDuration = 0.6;
@@ -1809,6 +1816,12 @@
 - (void)settingsViewControllerDidUpdateSettings:(SettingsViewController *)controller {
     NSInteger themeIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
     [self applyMapTheme:(OSMMapTheme)themeIdx savePreference:NO];
+
+    BOOL showBuildings = NO;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"Show3DBuildings"] != nil) {
+        showBuildings = [[NSUserDefaults standardUserDefaults] boolForKey:@"Show3DBuildings"];
+    }
+    self.mapView.showsBuildings = showBuildings;
 }
 
 #pragma mark - MKMapViewDelegate

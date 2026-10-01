@@ -20,6 +20,7 @@
 @property (nonatomic, strong) UISwitch *voiceSwitch;
 @property (nonatomic, strong) UISegmentedControl *voiceModeSegment;
 @property (nonatomic, strong) UISegmentedControl *themeSegment;
+@property (nonatomic, strong) UISwitch *show3DBuildingsSwitch;
 @property (nonatomic, strong) UISwitch *showFuelStationsSwitch;
 
 // Traffico & Autovelox
@@ -147,6 +148,9 @@
 
     if (self.themeSegment) {
         [[NSUserDefaults standardUserDefaults] setInteger:self.themeSegment.selectedSegmentIndex forKey:@"MapThemeIndex"];
+    }
+    if (self.show3DBuildingsSwitch) {
+        [[NSUserDefaults standardUserDefaults] setBool:self.show3DBuildingsSwitch.isOn forKey:@"Show3DBuildings"];
     }
     if (self.voiceModeSegment) {
         [VoiceGuidanceService sharedService].voiceMode = (VoiceGuidanceMode)self.voiceModeSegment.selectedSegmentIndex;
@@ -303,7 +307,7 @@
         case 4: return 3; // Traffico & Autovelox: Attiva Traffico, Chiave TomTom, Avvisi Velox
         case 5: return 2; // Repository Cydia OTA
         case 6: return 1; // Guida Vocale
-        case 7: return 1; // Stile Mappa
+        case 7: return 2; // Stile Mappa, Edifici 3D (Palazzi)
         case 8: return 1; // Pulsante Salva ed Esci
         default: return 0;
     }
@@ -612,17 +616,33 @@
     }
     // SEZIONE 7: Stile Mappa
     else if (indexPath.section == 7) {
-        cell.textLabel.text = NLString(@"MAP_STYLE", @"Stile Mappa");
-        if (!self.themeSegment) {
-            self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[
-                NLString(@"MAP_DAY", @"Giorno"),
-                NLString(@"MAP_NIGHT", @"Notte"),
-                NLString(@"MAP_SAT", @"Satellite")
-            ]];
-            self.themeSegment.selectedSegmentIndex = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
-            self.themeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = NLString(@"MAP_STYLE", @"Stile Mappa");
+            if (!self.themeSegment) {
+                self.themeSegment = [[UISegmentedControl alloc] initWithItems:@[
+                    NLString(@"MAP_DAY", @"Giorno"),
+                    NLString(@"MAP_NIGHT", @"Notte"),
+                    NLString(@"MAP_SAT", @"Satellite")
+                ]];
+                self.themeSegment.selectedSegmentIndex = [[NSUserDefaults standardUserDefaults] integerForKey:@"MapThemeIndex"];
+                self.themeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+            }
+            cell.accessoryView = self.themeSegment;
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = NLString(@"SHOW_3D_BUILDINGS", @"Edifici 3D (Palazzi)");
+            cell.detailTextLabel.text = NLString(@"SHOW_3D_BUILDINGS_DESC", @"Disattiva per fluidità e visibilità della rotta");
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:12.0];
+            if (!self.show3DBuildingsSwitch) {
+                self.show3DBuildingsSwitch = [[UISwitch alloc] init];
+                BOOL isEnabled = NO; // Disattivato di default per massime prestazioni su iPad Mini 1
+                if ([[NSUserDefaults standardUserDefaults] objectForKey:@"Show3DBuildings"] != nil) {
+                    isEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"Show3DBuildings"];
+                }
+                self.show3DBuildingsSwitch.on = isEnabled;
+                self.show3DBuildingsSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+            }
+            cell.accessoryView = self.show3DBuildingsSwitch;
         }
-        cell.accessoryView = self.themeSegment;
     }
     // SEZIONE 8: Pulsante Salva ed Esci (footer)
     else if (indexPath.section == 8) {
