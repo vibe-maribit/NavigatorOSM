@@ -1394,12 +1394,12 @@
 
     // Prefetching predittivo dei tasselli mappa (in navigazione lungo la rotta o a prua del veicolo)
     NSTimeInterval nowPrefetch = CACurrentMediaTime();
-    if (nowPrefetch - self.lastTilePrefetchTime > 6.0) {
+    if (nowPrefetch - self.lastTilePrefetchTime > 4.0) {
         self.lastTilePrefetchTime = nowPrefetch;
         if (self.isNavigating && self.currentRoute) {
             [self.osmOverlay prefetchTilesAlongRoute:self.currentRoute
                                      currentDistance:self.trackingEngine.currentRouteDistance
-                                     lookaheadMeters:4000.0];
+                                     lookaheadMeters:3500.0];
         } else if (location.speed > 3.5) { // Movimento > ~13 km/h in guida libera
             [self.osmOverlay prefetchTilesAheadOfCoordinate:location.coordinate
                                                     heading:self.currentHeading

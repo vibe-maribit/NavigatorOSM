@@ -1,4 +1,5 @@
 #import "OSMTileOverlay.h"
+#import <UIKit/UIKit.h>
 
 @interface OSMTileOverlay ()
 @property (nonatomic, strong) NSURLSession *session;
@@ -53,23 +54,24 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
         self.minimumZ = 3;
         self.tileSize = CGSizeMake(256, 256);
 
-        // Prepara la sessione HTTP con User-Agent identificativo conforme alla Tile Policy OSM
+        // Prepara la sessione HTTP con User-Agent conforme e throughput multi-socket aumentato
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.7 (iPad Mini 1; iOS 9.3.5; TileEngine)"
+            @"User-Agent": @"NavigatoreOSM/1.3.13 (iPad Mini 1; iOS 9.3.5; TileEngine)"
         };
-        config.timeoutIntervalForRequest = 10.0;
+        config.timeoutIntervalForRequest = 8.0;
+        config.HTTPMaximumConnectionsPerHost = 6;
         _session = [NSURLSession sessionWithConfiguration:config];
 
-        // Cache in memoria RAM ad alte prestazioni (120 tile = circa 3.5 MB RAM)
+        // Cache in memoria RAM ad alte prestazioni (350 tile = circa 8.5 MB RAM)
         _memoryCache = [[NSCache alloc] init];
-        _memoryCache.countLimit = 120;
+        _memoryCache.countLimit = 350;
 
         _prefetchQueue = [[NSOperationQueue alloc] init];
-        _prefetchQueue.maxConcurrentOperationCount = 2; // Bassa priorità per non bloccare la visuale attiva
+        _prefetchQueue.maxConcurrentOperationCount = 3; // Throughput rapido ma senza saturare la CPU A5
         _prefetchInProgressKeys = [NSMutableSet set];
 
-        // Prepara la cartella cache su disco ed elimina eventuali vecchie tile Carto con watermark o cache scura corrotta
+        // Prepara la cartella cache su disco
         NSString *baseCache = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
         _cacheDirectory = [baseCache stringByAppendingPathComponent:@"OSMTiles"];
         [[NSFileManager defaultManager] createDirectoryAtPath:_cacheDirectory withIntermediateDirectories:YES attributes:nil error:nil];
@@ -85,8 +87,19 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
             [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"DidClearOldEsriDarkCache_v13"];
             [[NSUserDefaults standardUserDefaults] synchronize];
         }
+
+        // Ascolta avviso di memoria per liberare subito la RAM cache se necessario
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(clearMemoryCache)
+                                                     name:UIApplicationDidReceiveMemoryWarningNotification
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [_session invalidateAndCancel];
 }
 
 - (NSURL *)URLForTilePath:(MKTileOverlayPath)path {
@@ -105,9 +118,12 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
         }
         case OSMMapThemeStandard:
         default: {
-            // OpenStreetMap Standard: /{z}/{x}/{y}.png
-            NSString *urlStr = [NSString stringWithFormat:@"https://tile.openstreetmap.org/%ld/%ld/%ld.png",
-                                (long)path.z, (long)path.x, (long)path.y];
+            // OpenStreetMap Standard con round-robin su {a,b,c}.tile.openstreetmap.org
+            // per moltiplicare i socket TCP e superare i limiti di connessione per singolo host
+            static const char cdnSubdomains[] = "abc";
+            char sub = cdnSubdomains[((NSUInteger)path.x + (NSUInteger)path.y) % 3];
+            NSString *urlStr = [NSString stringWithFormat:@"https://%c.tile.openstreetmap.org/%ld/%ld/%ld.png",
+                                sub, (long)path.z, (long)path.x, (long)path.y];
             return [NSURL URLWithString:urlStr];
         }
     }
@@ -154,18 +170,16 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
         return;
     }
 
-    // 2. Cache su disco: se presente, salva in RAM e restituisci immediatamente i dati offline
+    // 2. Cache su disco: lettura diretta ottimizzata con NSDataReadingMappedIfSafe
     NSString *filePath = [self tileFilePathForPath:path theme:self.theme];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
-        NSData *diskData = [NSData dataWithContentsOfFile:filePath];
-        if (diskData && diskData.length > 0) {
-            [self.memoryCache setObject:diskData forKey:cacheKey];
-            result(diskData, nil);
-            return;
-        }
+    NSData *diskData = [NSData dataWithContentsOfFile:filePath options:NSDataReadingMappedIfSafe error:nil];
+    if (diskData && diskData.length > 0) {
+        [self.memoryCache setObject:diskData forKey:cacheKey];
+        result(diskData, nil);
+        return;
     }
 
-    // 3. Altrimenti, scarica la tile dal server
+    // 3. Altrimenti, scarica la tile dal server con PRIORITÀ ALTA (tile attualmente a schermo!)
     NSURL *tileURL = [self URLForTilePath:path];
     if (!tileURL) {
         result(nil, [NSError errorWithDomain:@"OSMTileOverlayError" code:-1 userInfo:nil]);
@@ -174,11 +188,11 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
 
     __weak OSMTileOverlay *weakSelf = self;
     NSURLSessionDataTask *task = [self.session dataTaskWithURL:tileURL completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (data && !error) {
+        if (data && !error && data.length > 100) {
             // Salva in RAM
             [weakSelf.memoryCache setObject:data forKey:cacheKey];
 
-            // Salva su disco in background
+            // Salva su disco in background a bassa priorità I/O
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
                 NSString *folder = [filePath stringByDeletingLastPathComponent];
                 [[NSFileManager defaultManager] createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
@@ -190,10 +204,11 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
             result(nil, error);
         }
     }];
+    task.priority = NSURLSessionTaskPriorityHigh; // Priorità massima per la visuale attiva dell'utente
     [task resume];
 }
 
-#pragma mark - Prefetching Predittivo in Background
+#pragma mark - Prefetching Predittivo On-Demand in Background
 
 - (void)prefetchTilePath:(MKTileOverlayPath)path {
     NSString *cacheKey = [self cacheKeyForPath:path theme:self.theme];
@@ -208,13 +223,28 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
     }
 
     NSURL *tileURL = [self URLForTilePath:path];
-    if (!tileURL) return;
+    if (!tileURL) {
+        @synchronized (self.prefetchInProgressKeys) {
+            [self.prefetchInProgressKeys removeObject:cacheKey];
+        }
+        return;
+    }
 
     __weak OSMTileOverlay *weakSelf = self;
-    [self.prefetchQueue addOperationWithBlock:^{
+    NSBlockOperation *op = [[NSBlockOperation alloc] init];
+    __weak NSBlockOperation *weakOp = op;
+
+    [op addExecutionBlock:^{
+        if (weakOp.isCancelled) {
+            @synchronized (weakSelf.prefetchInProgressKeys) {
+                [weakSelf.prefetchInProgressKeys removeObject:cacheKey];
+            }
+            return;
+        }
+
         NSURLRequest *req = [NSURLRequest requestWithURL:tileURL cachePolicy:NSURLRequestReturnCacheDataElseLoad timeoutInterval:8.0];
         NSURLSessionDataTask *task = [weakSelf.session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            if (data && !error) {
+            if (data && !error && data.length > 100) {
                 [weakSelf.memoryCache setObject:data forKey:cacheKey];
                 NSString *folder = [filePath stringByDeletingLastPathComponent];
                 [[NSFileManager defaultManager] createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
@@ -224,81 +254,157 @@ static inline MKTileOverlayPath TilePathForCoordinate(CLLocationCoordinate2D coo
                 [weakSelf.prefetchInProgressKeys removeObject:cacheKey];
             }
         }];
+        task.priority = NSURLSessionTaskPriorityLow; // Bassa priorità per non intralciare le tile a schermo
         [task resume];
     }];
+
+    [self.prefetchQueue addOperation:op];
 }
 
 - (void)prefetchTilesAlongRoute:(RouteInfo *)route currentDistance:(double)currentDistance lookaheadMeters:(double)lookahead {
     if (!route || !route.polyline || route.polyline.pointCount < 2) return;
 
     NSUInteger totalPoints = route.polyline.pointCount;
+    MKMapPoint *points = route.polyline.points;
+    if (!points || totalPoints < 2) return;
 
-    // Campiona punti lungo il tracciato nei prossimi 3–5 km
+    // Distanze del corridoio da precaricare:
+    // startDist: posizione attuale dell'auto lungo la rotta
+    // endDist: orizzonte in anticipo (es. 2.000 metri avanti)
     double startDist = MAX(0.0, currentDistance);
     double endDist = MIN(route.totalDistance, startDist + lookahead);
     if (endDist <= startDist) return;
 
-    // Seleziona livelli di zoom tipici della guida turn-by-turn
-    NSArray<NSNumber *> *zooms = @[@(15), @(16)];
+    // Cancella prefetch pendenti ormai superati dalla marcia
+    [self.prefetchQueue cancelAllOperations];
 
-    // Stimiamo l'indice di partenza
-    double fracStart = startDist / MAX(1.0, route.totalDistance);
-    double fracEnd = endDist / MAX(1.0, route.totalDistance);
-    NSUInteger startIdx = (NSUInteger)floor(fracStart * (double)(totalPoints - 1));
-    NSUInteger endIdx = (NSUInteger)ceil(fracEnd * (double)(totalPoints - 1));
-    if (endIdx >= totalPoints) endIdx = totalPoints - 1;
+    // Troviamo i punti lungo la polyline compresi tra startDist ed endDist,
+    // campionando a passo geometrico regolare di ~130 metri.
+    // Una tile a Zoom 17 è di ~216m, quindi 130m garantisce che OGNI tile sul percorso venga campionata!
+    double sampleStepMeters = 130.0;
+    double currentAccumulatedDist = 0.0;
+    double nextTargetDist = startDist;
 
-    NSUInteger step = MAX(1, (NSUInteger)floor((double)(endIdx - startIdx) / 12.0));
+    // Set per evitare duplicati nella stessa sessione di prefetch
+    NSMutableSet<NSString *> *queuedKeys = [NSMutableSet set];
 
-    CLLocationCoordinate2D *coords = malloc(sizeof(CLLocationCoordinate2D) * totalPoints);
-    if (!coords) return;
-    [route.polyline getCoordinates:coords range:NSMakeRange(0, totalPoints)];
+    for (NSUInteger i = 0; i < totalPoints - 1 && nextTargetDist <= endDist; i++) {
+        MKMapPoint p1 = points[i];
+        MKMapPoint p2 = points[i + 1];
+        CLLocationDistance segLen = MKMetersBetweenMapPoints(p1, p2);
+        if (segLen <= 0.001) continue;
 
-    for (NSUInteger i = startIdx; i <= endIdx; i += step) {
-        CLLocationCoordinate2D coord = coords[i];
-        for (NSNumber *zNum in zooms) {
-            NSUInteger z = [zNum unsignedIntegerValue];
-            MKTileOverlayPath p = TilePathForCoordinate(coord, z);
-            [self prefetchTilePath:p];
+        double segStartDist = currentAccumulatedDist;
+        double segEndDist = currentAccumulatedDist + segLen;
+
+        while (nextTargetDist >= segStartDist && nextTargetDist <= segEndDist && nextTargetDist <= endDist) {
+            double ratio = (nextTargetDist - segStartDist) / segLen;
+            MKMapPoint sampledPoint = MKMapPointMake(p1.x + (p2.x - p1.x) * ratio,
+                                                     p1.y + (p2.y - p1.y) * ratio);
+            CLLocationCoordinate2D coord = MKCoordinateForMapPoint(sampledPoint);
+
+            double distFromCar = nextTargetDist - startDist;
+
+            // 1. Nei prossimi 1.800 metri: prefetch a Zoom 17 (primo piano ad altissima definizione attorno all'auto)
+            if (distFromCar <= 1800.0) {
+                MKTileOverlayPath p17 = TilePathForCoordinate(coord, 17);
+                NSString *k17 = [self cacheKeyForPath:p17 theme:self.theme];
+                if (![queuedKeys containsObject:k17]) {
+                    [queuedKeys addObject:k17];
+                    [self prefetchTilePath:p17];
+                }
+            }
+
+            // 2. Nei prossimi 3.000 metri: prefetch a Zoom 16 (media distanza e curve)
+            if (distFromCar <= 3000.0) {
+                MKTileOverlayPath p16 = TilePathForCoordinate(coord, 16);
+                NSString *k16 = [self cacheKeyForPath:p16 theme:self.theme];
+                if (![queuedKeys containsObject:k16]) {
+                    [queuedKeys addObject:k16];
+                    [self prefetchTilePath:p16];
+                }
+            }
+
+            // 3. Fino alla fine del lookahead: prefetch a Zoom 15 (sfondo orizzonte 3D)
+            MKTileOverlayPath p15 = TilePathForCoordinate(coord, 15);
+            NSString *k15 = [self cacheKeyForPath:p15 theme:self.theme];
+            if (![queuedKeys containsObject:k15]) {
+                [queuedKeys addObject:k15];
+                [self prefetchTilePath:p15];
+            }
+
+            nextTargetDist += sampleStepMeters;
         }
+
+        currentAccumulatedDist = segEndDist;
     }
-    free(coords);
 }
 
 - (void)prefetchTilesAheadOfCoordinate:(CLLocationCoordinate2D)coord heading:(double)heading speed:(double)speed {
-    if (speed < 4.0) return; // Meno di 15 km/h: prefetching non necessario
+    if (speed < 3.5) return; // Meno di ~13 km/h: veicolo fermo o manovra da fermo, prefetch rapido non necessario
 
     NSDate *now = [NSDate date];
-    if (self.lastAheadPrefetchDate && [now timeIntervalSinceDate:self.lastAheadPrefetchDate] < 6.0) {
-        return; // Throttle ogni 6 secondi
+    if (self.lastAheadPrefetchDate && [now timeIntervalSinceDate:self.lastAheadPrefetchDate] < 4.0) {
+        return; // Throttle a 4 secondi
     }
     self.lastAheadPrefetchDate = now;
 
-    // Proietta una coordinata avanti di 15–20 secondi di marcia (500m - 1200m)
-    double distKm = MIN(1.2, MAX(0.5, (speed * 18.0) / 1000.0));
-    double rEarth = 6371.0;
+    double rEarth = 6371000.0; // raggio terrestre in metri
     double lat1 = coord.latitude * M_PI / 180.0;
     double lon1 = coord.longitude * M_PI / 180.0;
     double brng = heading * M_PI / 180.0;
-    double lat2 = asin(sin(lat1) * cos(distKm / rEarth) + cos(lat1) * sin(distKm / rEarth) * cos(brng));
-    double lon2 = lon1 + atan2(sin(brng) * sin(distKm / rEarth) * cos(lat1), cos(distKm / rEarth) - sin(lat1) * sin(lat2));
 
-    CLLocationCoordinate2D forwardCoord = CLLocationCoordinate2DMake(lat2 * 180.0 / M_PI, lon2 * 180.0 / M_PI);
+    // Distanze di proiezione avanti lungo l'azimuth di marcia:
+    // 160m (~10s a 50 km/h), 380m (~25s), 700m (~45s), 1100m (~70s)
+    double distances[] = { 160.0, 380.0, 700.0, 1100.0 };
+    NSUInteger numDists = sizeof(distances) / sizeof(distances[0]);
 
-    // Scarica la tile centrale e le tile adiacenti (griglia 3x3) a zoom 15 e 16
-    for (NSUInteger z = 15; z <= 16; z++) {
-        MKTileOverlayPath centerPath = TilePathForCoordinate(forwardCoord, z);
-        for (NSInteger dx = -1; dx <= 1; dx++) {
-            for (NSInteger dy = -1; dy <= 1; dy++) {
-                MKTileOverlayPath p = centerPath;
-                NSInteger nx = (NSInteger)p.x + dx;
-                NSInteger ny = (NSInteger)p.y + dy;
-                int maxN = 1 << z;
-                if (nx >= 0 && nx < maxN && ny >= 0 && ny < maxN) {
-                    p.x = (NSUInteger)nx;
-                    p.y = (NSUInteger)ny;
-                    [self prefetchTilePath:p];
+    NSMutableSet<NSString *> *queuedKeys = [NSMutableSet set];
+
+    for (NSUInteger i = 0; i < numDists; i++) {
+        double d = distances[i];
+        double lat2 = asin(sin(lat1) * cos(d / rEarth) + cos(lat1) * sin(d / rEarth) * cos(brng));
+        double lon2 = lon1 + atan2(sin(brng) * sin(d / rEarth) * cos(lat1), cos(d / rEarth) - sin(lat1) * sin(lat2));
+
+        CLLocationCoordinate2D forwardCoord = CLLocationCoordinate2DMake(lat2 * 180.0 / M_PI, lon2 * 180.0 / M_PI);
+
+        // Per i primi 400m: scarica Zoom 17 (centro + 1 tile laterale per curve/incroci)
+        if (d <= 400.0) {
+            MKTileOverlayPath centerPath = TilePathForCoordinate(forwardCoord, 17);
+            for (NSInteger dx = -1; dx <= 1; dx++) {
+                for (NSInteger dy = -1; dy <= 1; dy++) {
+                    MKTileOverlayPath p = centerPath;
+                    NSInteger nx = (NSInteger)p.x + dx;
+                    NSInteger ny = (NSInteger)p.y + dy;
+                    int maxN = 1 << 17;
+                    if (nx >= 0 && nx < maxN && ny >= 0 && ny < maxN) {
+                        p.x = (NSUInteger)nx;
+                        p.y = (NSUInteger)ny;
+                        NSString *k = [self cacheKeyForPath:p theme:self.theme];
+                        if (![queuedKeys containsObject:k]) {
+                            [queuedKeys addObject:k];
+                            [self prefetchTilePath:p];
+                        }
+                    }
                 }
+            }
+        }
+
+        // Per tutti i punti fino a 1100m: scarica Zoom 16
+        MKTileOverlayPath p16 = TilePathForCoordinate(forwardCoord, 16);
+        NSString *k16 = [self cacheKeyForPath:p16 theme:self.theme];
+        if (![queuedKeys containsObject:k16]) {
+            [queuedKeys addObject:k16];
+            [self prefetchTilePath:p16];
+        }
+
+        // Per i punti lontani (700m - 1100m): scarica Zoom 15 (orizzonte)
+        if (d >= 700.0) {
+            MKTileOverlayPath p15 = TilePathForCoordinate(forwardCoord, 15);
+            NSString *k15 = [self cacheKeyForPath:p15 theme:self.theme];
+            if (![queuedKeys containsObject:k15]) {
+                [queuedKeys addObject:k15];
+                [self prefetchTilePath:p15];
             }
         }
     }
