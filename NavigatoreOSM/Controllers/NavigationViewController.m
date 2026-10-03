@@ -571,9 +571,13 @@
     SearchViewController *searchVC = [[SearchViewController alloc] init];
     searchVC.delegate = self;
     searchVC.modalPresentationStyle = UIModalPresentationFormSheet;
-    // Passa la posizione corrente per ricerche geolocalizzate
-    if (self.currentLocation) {
+    // Passa la posizione corrente per ricerche geolocalizzate con prossimità
+    if (self.currentLocation && CLLocationCoordinate2DIsValid(self.currentLocation.coordinate) && self.currentLocation.coordinate.latitude != 0) {
         searchVC.userLocation = self.currentLocation.coordinate;
+    } else if (self.mapView.userLocation.location && CLLocationCoordinate2DIsValid(self.mapView.userLocation.location.coordinate) && self.mapView.userLocation.location.coordinate.latitude != 0) {
+        searchVC.userLocation = self.mapView.userLocation.location.coordinate;
+    } else if (CLLocationCoordinate2DIsValid(self.mapView.centerCoordinate) && self.mapView.centerCoordinate.latitude != 0) {
+        searchVC.userLocation = self.mapView.centerCoordinate;
     }
     [self presentViewController:searchVC animated:YES completion:nil];
 }

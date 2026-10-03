@@ -1,5 +1,6 @@
 #import "VoiceGuidanceService.h"
 #import "LocalizationManager.h"
+#import "AISpeechService.h"
 
 NSString *const kVoiceGuidanceModeChangedNotification = @"VoiceGuidanceModeChangedNotification";
 NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
@@ -108,6 +109,7 @@ NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
     if (self.synthesizer.isSpeaking) {
         [self.synthesizer stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
     }
+    [[AISpeechService sharedService] stopPlayback];
 }
 
 - (void)resetManeuverTracking {
@@ -123,6 +125,18 @@ NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
     // In modalità Solo Allerte o Completa, pronuncia l'avviso di sicurezza!
     if (self.voiceMode == VoiceGuidanceModeMuted || !text || text.length == 0) return;
     [self speak:text];
+}
+
+- (void)speakWithLocalSynthesizer:(NSString *)text {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AVSpeechUtterance *utterance = [AVSpeechUtterance speechUtteranceWithString:text];
+        NSString *langCode = [[LocalizationManager sharedManager] speechVoiceLanguage];
+        utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:langCode];
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95; // Scandita per la guida
+        utterance.pitchMultiplier = 1.0;
+        utterance.volume = 1.0;
+        [self.synthesizer speakUtterance:utterance];
+    });
 }
 
 - (void)speak:(NSString *)text {
@@ -146,14 +160,24 @@ NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
     self.lastSpokenPhrase = text;
     self.lastSpokenTime = now;
 
-    AVSpeechUtterance *utterance = [AVSpeechUtterance speechUtteranceWithString:text];
-    NSString *langCode = [[LocalizationManager sharedManager] speechVoiceLanguage];
-    utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:langCode];
-    utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95; // Scandita per la guida
-    utterance.pitchMultiplier = 1.0;
-    utterance.volume = 1.0;
+    // Se il TTS esterno neurale è abilitato (strettamente opzionale)
+    if ([AISpeechService sharedService].isExternalTTSEnabled) {
+        __weak VoiceGuidanceService *weakSelf = self;
+        [[AISpeechService sharedService] synthesizeSpeech:text voice:nil completion:^(NSData *mp3Data, NSError *error) {
+            if (error || !mp3Data) {
+                [weakSelf speakWithLocalSynthesizer:text];
+                return;
+            }
+            [[AISpeechService sharedService] playAudioData:mp3Data completion:^(BOOL success) {
+                if (!success) {
+                    [weakSelf speakWithLocalSynthesizer:text];
+                }
+            }];
+        }];
+        return;
+    }
 
-    [self.synthesizer speakUtterance:utterance];
+    [self speakWithLocalSynthesizer:text];
 }
 
 - (void)speakManeuver:(NSString *)instruction distanceInMeters:(double)distance stepIndex:(NSUInteger)stepIndex {

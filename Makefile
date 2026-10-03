@@ -17,6 +17,7 @@ NavigatoreOSM_FILES = NavigatoreOSM/main.m \
                       NavigatoreOSM/Services/RouteTrackingEngine.m \
                       NavigatoreOSM/Services/FuelPriceService.m \
                       NavigatoreOSM/Services/VoiceGuidanceService.m \
+                      NavigatoreOSM/Services/AISpeechService.m \
                       NavigatoreOSM/Services/LocalizationManager.m \
                       NavigatoreOSM/Services/NetworkGPSReceiver.m \
                       NavigatoreOSM/Services/TollGuruService.m \

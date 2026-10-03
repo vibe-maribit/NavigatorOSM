@@ -6,6 +6,7 @@
 #import "Services/TollGuruService.h"
 #import "Overlays/TrafficTileOverlay.h"
 #import "Services/SpeedCameraService.h"
+#import "Services/AISpeechService.h"
 
 @interface SettingsViewController () <UITextFieldDelegate>
 
@@ -22,6 +23,12 @@
 @property (nonatomic, strong) UISegmentedControl *themeSegment;
 @property (nonatomic, strong) UISwitch *show3DBuildingsSwitch;
 @property (nonatomic, strong) UISwitch *showFuelStationsSwitch;
+
+// AI Speech (STT + TTS)
+@property (nonatomic, strong) UISwitch *aiSTTSwitch;
+@property (nonatomic, strong) UISwitch *aiTTSSwitch;
+@property (nonatomic, strong) UITextField *aiSpeechBaseURLTextField;
+@property (nonatomic, strong) UITextField *aiSpeechApiKeyTextField;
 
 // Traffico & Autovelox
 @property (nonatomic, strong) UISwitch *trafficSwitch;
@@ -190,6 +197,20 @@
         [[NSUserDefaults standardUserDefaults] setBool:self.speedCameraAlertSwitch.isOn forKey:@"SpeedCameraAlertsEnabled"];
     }
 
+    // Salvataggio impostazioni AI Speech
+    if (self.aiSTTSwitch) {
+        [AISpeechService sharedService].isSTTEnabled = self.aiSTTSwitch.isOn;
+    }
+    if (self.aiTTSSwitch) {
+        [AISpeechService sharedService].isExternalTTSEnabled = self.aiTTSSwitch.isOn;
+    }
+    if (self.aiSpeechBaseURLTextField) {
+        [AISpeechService sharedService].baseURL = self.aiSpeechBaseURLTextField.text;
+    }
+    if (self.aiSpeechApiKeyTextField) {
+        [AISpeechService sharedService].apiKey = self.aiSpeechApiKeyTextField.text;
+    }
+
     [gps saveSettings];
     [gps startWithSavedSettings];
     [[NSUserDefaults standardUserDefaults] synchronize];
@@ -215,6 +236,10 @@
         [TollGuruService sharedService].apiKey = textField.text;
     } else if (textField == self.trafficApiKeyTextField) {
         [[TrafficTileOverlay sharedOverlay] updateApiKey:textField.text];
+    } else if (textField == self.aiSpeechBaseURLTextField) {
+        [AISpeechService sharedService].baseURL = textField.text;
+    } else if (textField == self.aiSpeechApiKeyTextField) {
+        [AISpeechService sharedService].apiKey = textField.text;
     }
 }
 
@@ -306,7 +331,7 @@
         case 3: return 4; // Ricevitore GPS di Rete (Porta, IP Server, Diagnostica, Ultima Posizione)
         case 4: return 3; // Traffico & Autovelox: Attiva Traffico, Chiave TomTom, Avvisi Velox
         case 5: return 2; // Repository Cydia OTA
-        case 6: return 1; // Guida Vocale
+        case 6: return 7; // Voce: Modalità, STT Switch, TTS Switch, Voce Neurale, Server URL, API Key, Test
         case 7: return 2; // Stile Mappa, Edifici 3D (Palazzi)
         case 8: return 1; // Pulsante Salva ed Esci
         default: return 0;
@@ -321,7 +346,7 @@
         case 3: return NLString(@"SEC_GPS", @"🛰️ RICEVITORE GPS DI RETE (DA SMARTPHONE ANDROID)");
         case 4: return NLString(@"SEC_TRAFFIC_VELOX", @"🚦 TRAFFICO LIVE & 📸 AUTOVELOX");
         case 5: return NLString(@"SEC_CYDIA", @"📲 AGGIORNAMENTI AUTOMATICI ONLINE (CYDIA OTA)");
-        case 6: return NLString(@"SEC_VOICE", @"🔊 GUIDA VOCALE");
+        case 6: return NLString(@"SEC_VOICE", @"🔊 VOCE, DETTATURA & AI SPEECH");
         case 7: return NLString(@"SEC_MAP", @"🗺️ MAPPE & ASPETTO");
         case 8: return nil;
         default: return @"";
@@ -346,8 +371,8 @@
     // SEZIONE 0: Versione Software
     if (indexPath.section == 0) {
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.15";
-        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.15";
+        NSString *versionStr = info[@"CFBundleShortVersionString"] ?: @"1.3.16";
+        NSString *buildStr = info[@"CFBundleVersion"] ?: @"1.3.16";
 
         if (indexPath.row == 0) {
             cell.textLabel.text = NLString(@"APP_VERSION", @"Versione Applicazione");
@@ -599,20 +624,85 @@
             cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.7 alpha:1.0];
         }
     }
-    // SEZIONE 6: Guida Vocale
+    // SEZIONE 6: Guida Vocale & AI Speech
     else if (indexPath.section == 6) {
-        cell.textLabel.text = NLString(@"VOICE_MODE", @"Modalità Voce");
-        if (!self.voiceModeSegment) {
-            self.voiceModeSegment = [[UISegmentedControl alloc] initWithItems:@[
-                NLString(@"VOICE_ALL", @"🔊 Completa"),
-                NLString(@"VOICE_ALERTS", @"⚠️ Solo Allerte"),
-                NLString(@"VOICE_MUTED", @"🔇 Muto")
-            ]];
-            self.voiceModeSegment.selectedSegmentIndex = [VoiceGuidanceService sharedService].voiceMode;
-            self.voiceModeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
-            [self.voiceModeSegment addTarget:self action:@selector(applyVoiceModeChange:) forControlEvents:UIControlEventValueChanged];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = NLString(@"VOICE_MODE", @"Modalità Voce");
+            if (!self.voiceModeSegment) {
+                self.voiceModeSegment = [[UISegmentedControl alloc] initWithItems:@[
+                    NLString(@"VOICE_ALL", @"🔊 Completa"),
+                    NLString(@"VOICE_ALERTS", @"⚠️ Solo Allerte"),
+                    NLString(@"VOICE_MUTED", @"🔇 Muto")
+                ]];
+                self.voiceModeSegment.selectedSegmentIndex = [VoiceGuidanceService sharedService].voiceMode;
+                self.voiceModeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
+                [self.voiceModeSegment addTarget:self action:@selector(applyVoiceModeChange:) forControlEvents:UIControlEventValueChanged];
+            }
+            cell.accessoryView = self.voiceModeSegment;
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = NLString(@"VOICE_STT_TITLE", @"Dettatura Vocale (STT)");
+            cell.detailTextLabel.text = NLString(@"VOICE_STT_DESC", @"Tasto 🎙️ nella ricerca");
+            if (!self.aiSTTSwitch) {
+                self.aiSTTSwitch = [[UISwitch alloc] init];
+                self.aiSTTSwitch.on = [AISpeechService sharedService].isSTTEnabled;
+                self.aiSTTSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+            }
+            cell.accessoryView = self.aiSTTSwitch;
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = NLString(@"VOICE_TTS_TITLE", @"Voce Neurale Online (TTS)");
+            cell.detailTextLabel.text = NLString(@"VOICE_TTS_DESC", @"Opzionale (fallback locale)");
+            if (!self.aiTTSSwitch) {
+                self.aiTTSSwitch = [[UISwitch alloc] init];
+                self.aiTTSSwitch.on = [AISpeechService sharedService].isExternalTTSEnabled;
+                self.aiTTSSwitch.onTintColor = [UIColor colorWithRed:0.15 green:0.75 blue:0.35 alpha:1.0];
+            }
+            cell.accessoryView = self.aiTTSSwitch;
+        } else if (indexPath.row == 3) {
+            cell.textLabel.text = NLString(@"VOICE_NAME_TITLE", @"Timbro Voce Neurale");
+            cell.detailTextLabel.text = [AISpeechService displayNameForVoice:[AISpeechService sharedService].selectedVoice];
+            cell.detailTextLabel.textColor = [UIColor colorWithRed:0.3 green:0.7 blue:1.0 alpha:1.0];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        } else if (indexPath.row == 4) {
+            cell.textLabel.text = NLString(@"VOICE_SERVER_URL", @"Server Speech (Base URL)");
+            if (!self.aiSpeechBaseURLTextField) {
+                self.aiSpeechBaseURLTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 190, 32)];
+                self.aiSpeechBaseURLTextField.text = [AISpeechService sharedService].baseURL;
+                self.aiSpeechBaseURLTextField.placeholder = @"https://speech.applikat.it";
+                self.aiSpeechBaseURLTextField.textColor = [UIColor whiteColor];
+                self.aiSpeechBaseURLTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+                self.aiSpeechBaseURLTextField.font = [UIFont systemFontOfSize:13.0];
+                self.aiSpeechBaseURLTextField.textAlignment = NSTextAlignmentCenter;
+                self.aiSpeechBaseURLTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                self.aiSpeechBaseURLTextField.autocorrectionType = UITextAutocorrectionTypeNo;
+                self.aiSpeechBaseURLTextField.layer.cornerRadius = 6.0;
+                self.aiSpeechBaseURLTextField.delegate = self;
+            }
+            cell.accessoryView = self.aiSpeechBaseURLTextField;
+        } else if (indexPath.row == 5) {
+            cell.textLabel.text = NLString(@"VOICE_API_KEY", @"Chiave API (OPENAI_API_KEY)");
+            if (!self.aiSpeechApiKeyTextField) {
+                self.aiSpeechApiKeyTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 190, 32)];
+                self.aiSpeechApiKeyTextField.text = [AISpeechService sharedService].apiKey;
+                self.aiSpeechApiKeyTextField.placeholder = @"sk-...";
+                self.aiSpeechApiKeyTextField.textColor = [UIColor whiteColor];
+                self.aiSpeechApiKeyTextField.backgroundColor = [UIColor colorWithWhite:0.25 alpha:1.0];
+                self.aiSpeechApiKeyTextField.font = [UIFont systemFontOfSize:12.0];
+                self.aiSpeechApiKeyTextField.textAlignment = NSTextAlignmentCenter;
+                self.aiSpeechApiKeyTextField.secureTextEntry = YES;
+                self.aiSpeechApiKeyTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                self.aiSpeechApiKeyTextField.autocorrectionType = UITextAutocorrectionTypeNo;
+                self.aiSpeechApiKeyTextField.layer.cornerRadius = 6.0;
+                self.aiSpeechApiKeyTextField.delegate = self;
+            }
+            cell.accessoryView = self.aiSpeechApiKeyTextField;
+        } else if (indexPath.row == 6) {
+            cell.textLabel.text = NLString(@"VOICE_TEST", @"▶️ Prova Voce & Connessione");
+            cell.textLabel.textColor = [UIColor colorWithRed:0.3 green:0.85 blue:0.4 alpha:1.0];
+            cell.textLabel.font = [UIFont boldSystemFontOfSize:15.0];
+            cell.detailTextLabel.text = NLString(@"VOICE_TEST_DESC", @"Ascolta anteprima audio");
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
         }
-        cell.accessoryView = self.voiceModeSegment;
     }
     // SEZIONE 7: Stile Mappa
     else if (indexPath.section == 7) {
@@ -678,9 +768,76 @@
     if (indexPath.section == 5 && indexPath.row == 0) {
         [self copyCydiaRepoURL];
     }
+    if (indexPath.section == 6 && indexPath.row == 3) {
+        [self showVoicePickerActionSheetFromIndexPath:indexPath];
+    }
+    if (indexPath.section == 6 && indexPath.row == 6) {
+        [self testSpeechVoice];
+    }
     if (indexPath.section == 8 && indexPath.row == 0) {
         [self handleClose];
     }
+}
+
+- (void)showVoicePickerActionSheetFromIndexPath:(NSIndexPath *)indexPath {
+    [self.view endEditing:YES];
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:NLString(@"SELECT_VOICE_TITLE", @"Scegli Voce Neurale")
+                                                                   message:NLString(@"SELECT_VOICE_MSG", @"Seleziona il timbro vocale OpenAI desiderato (ascolta l'anteprima audio):")
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+
+    NSArray<NSString *> *voices = [AISpeechService availableVoices];
+    __weak SettingsViewController *weakSelf = self;
+
+    for (NSString *voice in voices) {
+        NSString *title = [AISpeechService displayNameForVoice:voice];
+        if ([voice isEqualToString:[AISpeechService sharedService].selectedVoice]) {
+            title = [NSString stringWithFormat:@"✓ %@", title];
+        }
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [AISpeechService sharedService].selectedVoice = voice;
+            [weakSelf.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+            // Riproduci anteprima istantanea
+            [[AISpeechService sharedService] playSampleForVoice:voice completion:nil];
+        }]];
+    }
+
+    [sheet addAction:[UIAlertAction actionWithTitle:NLString(@"CANCEL", @"Annulla") style:UIAlertActionStyleCancel handler:nil]];
+
+    UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];
+    if (sheet.popoverPresentationController) {
+        sheet.popoverPresentationController.sourceView = cell ?: self.tableView;
+        sheet.popoverPresentationController.sourceRect = cell ? cell.bounds : CGRectMake(self.view.bounds.size.width / 2.0, self.view.bounds.size.height / 2.0, 1, 1);
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)testSpeechVoice {
+    [self.view endEditing:YES];
+    if (self.aiSpeechBaseURLTextField.text.length > 0) {
+        [AISpeechService sharedService].baseURL = self.aiSpeechBaseURLTextField.text;
+    }
+    if (self.aiSpeechApiKeyTextField.text.length > 0) {
+        [AISpeechService sharedService].apiKey = self.aiSpeechApiKeyTextField.text;
+    }
+
+    NSString *voice = [AISpeechService sharedService].selectedVoice;
+    UIAlertController *loading = [UIAlertController alertControllerWithTitle:NLString(@"TESTING_VOICE", @"Test Connessione Vocale")
+                                                                     message:NLString(@"TESTING_VOICE_MSG", @"Connessione al server speech e download anteprima audio...")
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:loading animated:YES completion:nil];
+
+    __weak SettingsViewController *weakSelf = self;
+    [[AISpeechService sharedService] playSampleForVoice:voice completion:^(BOOL success, NSError *error) {
+        [loading dismissViewControllerAnimated:YES completion:^{
+            if (!success || error) {
+                UIAlertController *errAlert = [UIAlertController alertControllerWithTitle:NLString(@"ERROR", @"Errore Connessione")
+                                                                                  message:error.localizedDescription ?: @"Impossibile contattare il server speech."
+                                                                           preferredStyle:UIAlertControllerStyleAlert];
+                [errAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [weakSelf presentViewController:errAlert animated:YES completion:nil];
+            }
+        }];
+    }];
 }
 
 @end
