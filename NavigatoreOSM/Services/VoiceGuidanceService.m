@@ -139,18 +139,22 @@ NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
     });
 }
 
+- (BOOL)isSpeakingOrPlaying {
+    return self.synthesizer.isSpeaking || [AISpeechService sharedService].isPlaying;
+}
+
 - (void)speak:(NSString *)text {
     if (self.isMuted || !text || text.length == 0) return;
 
     // Throttle globale: evita qualsiasi ripetizione della stessa frase entro 15 secondi
-    // e non sovrapporre frasi diverse a meno di 4 secondi l'una dall'altra
+    // e non sovrapporre frasi diverse a meno di 3.5 secondi l'una dall'altra
     NSDate *now = [NSDate date];
     if (self.lastSpokenTime) {
         NSTimeInterval elapsed = [now timeIntervalSinceDate:self.lastSpokenTime];
         if ([text isEqualToString:self.lastSpokenPhrase] && elapsed < 15.0) {
             return;
         }
-        if (elapsed < 3.5 && self.synthesizer.isSpeaking) {
+        if (elapsed < 3.5 && [self isSpeakingOrPlaying]) {
             return;
         }
     }
@@ -163,16 +167,19 @@ NSString *const kPrefVoiceGuidanceMode = @"VoiceGuidanceMode";
     // Se il TTS esterno neurale è abilitato (strettamente opzionale)
     if ([AISpeechService sharedService].isExternalTTSEnabled) {
         __weak VoiceGuidanceService *weakSelf = self;
+        NSString *currentPhrase = text;
         [[AISpeechService sharedService] synthesizeSpeech:text voice:nil completion:^(NSData *mp3Data, NSError *error) {
+            // Se nel frattempo l'audio è stato mutato o è sopraggiunta una nuova frase, scarta l'audio
+            if (weakSelf.isMuted || ![weakSelf.lastSpokenPhrase isEqualToString:currentPhrase]) {
+                return;
+            }
             if (error || !mp3Data) {
+                NSLog(@"[VoiceGuidanceService] Fallback su sintetizzatore locale per errore TTS esterno: %@", error.localizedDescription);
                 [weakSelf speakWithLocalSynthesizer:text];
                 return;
             }
-            [[AISpeechService sharedService] playAudioData:mp3Data completion:^(BOOL success) {
-                if (!success) {
-                    [weakSelf speakWithLocalSynthesizer:text];
-                }
-            }];
+            // Riproduci l'audio sintetizzato. Nessun fallback a fine riproduzione o interruzione!
+            [[AISpeechService sharedService] playAudioData:mp3Data completion:nil];
         }];
         return;
     }

@@ -17,6 +17,7 @@ extern NSString *const kAISpeechSettingsChangedNotification;
 @property (nonatomic, copy) NSString *selectedVoice;
 
 @property (nonatomic, readonly) BOOL isRecording;
+@property (nonatomic, readonly) BOOL isPlaying;
 
 + (instancetype)sharedService;
 

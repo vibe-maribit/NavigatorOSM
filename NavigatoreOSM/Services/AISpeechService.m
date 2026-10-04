@@ -10,7 +10,7 @@ NSString *const kAISpeechSettingsChangedNotification = @"AISpeechSettingsChanged
 
 static NSString *const kDefaultBaseURL = @"https://speech.applikat.it";
 static NSString *const kDefaultAPIKey = @"sk-speech-i5pdahJ68pyIby6Vj6YRkTufC80uj91CKhZQxKCof0d0cz0RbIck2T5Cabsi";
-static NSString *const kDefaultVoice = @"alloy";
+static NSString *const kDefaultVoice = @"it-IT-ElsaNeural";
 
 @interface AISpeechService () <AVAudioRecorderDelegate, AVAudioPlayerDelegate>
 @property (nonatomic, strong) AVAudioRecorder *audioRecorder;
@@ -38,27 +38,58 @@ static NSString *const kDefaultVoice = @"alloy";
         config.timeoutIntervalForRequest = 10.0;
         config.timeoutIntervalForResource = 20.0;
         config.HTTPAdditionalHeaders = @{
-            @"User-Agent": @"NavigatoreOSM/1.3.16 (iPad Mini 1; iOS 9.3.5; AISpeech)"
+            @"User-Agent": @"NavigatoreOSM/1.3.17 (iPad Mini 1; iOS 9.3.5; AISpeech)"
         };
         _session = [NSURLSession sessionWithConfiguration:config];
     }
     return self;
 }
 
+- (BOOL)isPlaying {
+    return self.audioPlayer != nil && self.audioPlayer.isPlaying;
+}
+
 #pragma mark - Voci Supportate
 
 + (NSArray<NSString *> *)availableVoices {
-    return @[@"alloy", @"echo", @"fable", @"onyx", @"nova", @"shimmer"];
+    BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+    if (isIt) {
+        return @[
+            @"it-IT-ElsaNeural",
+            @"it-IT-IsabellaNeural",
+            @"it-IT-DiegoNeural",
+            @"it-IT-GiuseppeNeural",
+            @"alloy",
+            @"echo",
+            @"nova",
+            @"onyx"
+        ];
+    } else {
+        return @[
+            @"alloy",
+            @"echo",
+            @"fable",
+            @"onyx",
+            @"nova",
+            @"shimmer",
+            @"it-IT-ElsaNeural",
+            @"it-IT-DiegoNeural"
+        ];
+    }
 }
 
 + (NSString *)displayNameForVoice:(NSString *)voice {
-    if ([voice isEqualToString:@"alloy"]) return @"Alloy (Neutro, bilanciato)";
-    if ([voice isEqualToString:@"echo"]) return @"Echo (Maschile, chiaro)";
-    if ([voice isEqualToString:@"fable"]) return @"Fable (Espressivo, caldo)";
-    if ([voice isEqualToString:@"onyx"]) return @"Onyx (Maschile, profondo)";
-    if ([voice isEqualToString:@"nova"]) return @"Nova (Femminile, brillante)";
-    if ([voice isEqualToString:@"shimmer"]) return @"Shimmer (Femminile, morbido)";
-    return voice ?: @"Alloy";
+    if ([voice isEqualToString:@"it-IT-ElsaNeural"]) return @"Elsa (Italiano - Femminile)";
+    if ([voice isEqualToString:@"it-IT-IsabellaNeural"]) return @"Isabella (Italiano - Femminile)";
+    if ([voice isEqualToString:@"it-IT-DiegoNeural"]) return @"Diego (Italiano - Maschile)";
+    if ([voice isEqualToString:@"it-IT-GiuseppeNeural"]) return @"Giuseppe (Italiano - Maschile)";
+    if ([voice isEqualToString:@"alloy"]) return @"Alloy (Inglese - Neutro)";
+    if ([voice isEqualToString:@"echo"]) return @"Echo (Inglese - Maschile)";
+    if ([voice isEqualToString:@"fable"]) return @"Fable (Inglese - Espressivo)";
+    if ([voice isEqualToString:@"onyx"]) return @"Onyx (Inglese - Profondo)";
+    if ([voice isEqualToString:@"nova"]) return @"Nova (Inglese - Femminile)";
+    if ([voice isEqualToString:@"shimmer"]) return @"Shimmer (Inglese - Morbido)";
+    return voice ?: @"Elsa (Italiano)";
 }
 
 #pragma mark - Proprietà & Preferenze
@@ -117,8 +148,14 @@ static NSString *const kDefaultVoice = @"alloy";
 
 - (NSString *)selectedVoice {
     NSString *val = [[NSUserDefaults standardUserDefaults] stringForKey:kPrefAITTSVoice];
-    if (val.length > 0) return val;
-    return kDefaultVoice;
+    BOOL isIt = [[LocalizationManager sharedManager] isItalian];
+    if (val.length > 0) {
+        if (isIt && [val isEqualToString:@"alloy"]) {
+            return @"it-IT-ElsaNeural";
+        }
+        return val;
+    }
+    return isIt ? @"it-IT-ElsaNeural" : @"alloy";
 }
 
 - (void)setSelectedVoice:(NSString *)voice {
@@ -422,10 +459,7 @@ static NSString *const kDefaultVoice = @"alloy";
         [self.audioPlayer stop];
         self.audioPlayer = nil;
     }
-    if (self.playbackCompletion) {
-        self.playbackCompletion(NO);
-        self.playbackCompletion = nil;
-    }
+    self.playbackCompletion = nil;
 }
 
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
@@ -439,7 +473,13 @@ static NSString *const kDefaultVoice = @"alloy";
 #pragma mark - Anteprima Voce
 
 - (void)playSampleForVoice:(NSString *)voice completion:(void(^)(BOOL success, NSError *error))completion {
-    NSString *sampleText = [NSString stringWithFormat:@"Questa è la voce neurale %@.", [voice capitalizedString]];
+    NSString *sampleText;
+    if ([voice hasPrefix:@"it-IT"]) {
+        NSString *disp = [self.class displayNameForVoice:voice];
+        sampleText = [NSString stringWithFormat:@"Questa è la voce neurale %@ per la navigazione con Navigatore OSM.", disp];
+    } else {
+        sampleText = [NSString stringWithFormat:@"This is the %@ neural voice for Navigatore OSM.", [voice capitalizedString]];
+    }
     __weak AISpeechService *weakSelf = self;
     [self synthesizeSpeech:sampleText voice:voice completion:^(NSData *mp3Data, NSError *error) {
         if (error || !mp3Data) {

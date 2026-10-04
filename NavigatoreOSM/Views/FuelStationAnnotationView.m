@@ -67,17 +67,19 @@
         bName = [bName substringToIndex:8];
     }
 
+    NSString *fuelName = [[FuelPriceService sharedService] nameForFuelType:type];
+
     if (p > 0.1) {
-        self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@ %.2f€", bName, p];
+        self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@ • %@ %.2f€", bName, fuelName, p];
     } else {
-        self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@", bName];
+        self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@ (%@)", bName, fuelName];
     }
 
     // Calcola dimensione dinamica del pill in modo sicuro
     UIFont *font = self.titleLabel.font ?: [UIFont boldSystemFontOfSize:11.5];
     NSString *txt = self.titleLabel.text ?: @"⛽ Distributore";
     CGSize fitSize = [txt sizeWithAttributes:@{NSFontAttributeName: font}];
-    CGFloat width = MAX(74.0, fitSize.width + 18.0);
+    CGFloat width = MAX(88.0, fitSize.width + 18.0);
 
     // In MapKit su iOS 9, aggiorniamo solo i bounds e il centerOffset,
     // preservando la coordinata del centro gestita dalla mappa!

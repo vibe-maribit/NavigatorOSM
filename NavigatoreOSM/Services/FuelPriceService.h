@@ -32,6 +32,7 @@ extern NSString *const kFuelPricesUpdatedNotification;
 - (double)effectivePriceForFuelType:(FuelType)type;
 - (NSString *)displayTitleForFuelType:(FuelType)type;
 - (NSString *)formattedSubtitle;
+- (NSString *)formattedSubtitleForFuelType:(FuelType)type;
 
 @end
 

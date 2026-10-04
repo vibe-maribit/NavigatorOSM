@@ -255,6 +255,7 @@
         double p = [[FuelPriceService sharedService] effectivePriceForFuelType:newType];
         self.priceTextField.text = [NSString stringWithFormat:@"%.3f", p];
     }
+    [[NSNotificationCenter defaultCenter] postNotificationName:kFuelPricesUpdatedNotification object:nil];
     [self.tableView reloadData];
 }
 

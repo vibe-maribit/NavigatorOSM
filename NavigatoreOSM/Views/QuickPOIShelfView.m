@@ -57,6 +57,10 @@ static NSArray *POICategoriesDefinition(void) {
                                                  selector:@selector(updateLocalizedTitles)
                                                      name:kAppLanguagePreferenceChangedNotification
                                                    object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(updateLocalizedTitles)
+                                                     name:kFuelPricesUpdatedNotification
+                                                   object:nil];
     }
     return self;
 }
@@ -78,7 +82,13 @@ static NSArray *POICategoriesDefinition(void) {
         btn.layer.borderColor = [[UIColor colorWithWhite:0.4 alpha:0.4] CGColor];
         btn.layer.borderWidth = 1.0;
 
-        NSString *title = NLString(dict[@"key"], dict[@"def"]);
+        NSString *title;
+        if ([dict[@"query"] isEqualToString:@"fuel"]) {
+            FuelType curFuel = [FuelPriceService sharedService].selectedFuelType;
+            title = [[FuelPriceService sharedService] nameForFuelType:curFuel];
+        } else {
+            title = NLString(dict[@"key"], dict[@"def"]);
+        }
         NSString *text = [NSString stringWithFormat:@"%@ %@", dict[@"icon"], title];
         [btn setTitle:text forState:UIControlStateNormal];
         btn.titleLabel.font = [UIFont boldSystemFontOfSize:11.0];
@@ -114,7 +124,13 @@ static NSArray *POICategoriesDefinition(void) {
     for (NSUInteger i = 0; i < self.categoryButtons.count && i < items.count; i++) {
         UIButton *btn = self.categoryButtons[i];
         NSDictionary *dict = items[i];
-        NSString *title = NLString(dict[@"key"], dict[@"def"]);
+        NSString *title;
+        if ([dict[@"query"] isEqualToString:@"fuel"]) {
+            FuelType curFuel = [FuelPriceService sharedService].selectedFuelType;
+            title = [[FuelPriceService sharedService] nameForFuelType:curFuel];
+        } else {
+            title = NLString(dict[@"key"], dict[@"def"]);
+        }
         NSString *text = [NSString stringWithFormat:@"%@ %@", dict[@"icon"], title];
         [btn setTitle:text forState:UIControlStateNormal];
         objc_setAssociatedObject(btn, "poi_name", title, OBJC_ASSOCIATION_COPY_NONATOMIC);

@@ -76,27 +76,55 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
     NSString *bName = (self.brand && [self.brand isKindOfClass:[NSString class]] && self.brand.length > 0)
         ? self.brand
         : ((self.name && [self.name isKindOfClass:[NSString class]]) ? self.name : @"Distributore");
+    NSString *fName = [[FuelPriceService sharedService] nameForFuelType:type];
     if (p > 0.1) {
-        return [NSString stringWithFormat:@"⛽ %@ • %.3f €", bName, p];
+        return [NSString stringWithFormat:@"⛽ %@ • %@: %.3f €", bName, fName, p];
     }
-    return [NSString stringWithFormat:@"⛽ %@", bName];
+    return [NSString stringWithFormat:@"⛽ %@ (%@)", bName, fName];
 }
 
 - (NSString *)formattedSubtitle {
+    return [self formattedSubtitleForFuelType:FuelTypePetrol];
+}
+
+- (NSString *)formattedSubtitleForFuelType:(FuelType)type {
     NSMutableArray *parts = [NSMutableArray array];
-    if (self.petrolPriceSelf > 0.1) {
-        [parts addObject:[NSString stringWithFormat:@"Benzina: %.3f€", self.petrolPriceSelf]];
-    } else if (self.petrolPriceServed > 0.1) {
-        [parts addObject:[NSString stringWithFormat:@"Benzina (serv.): %.3f€", self.petrolPriceServed]];
+
+    // Selezionato per primo
+    if (type == FuelTypeDiesel) {
+        if (self.dieselPriceSelf > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"✓ Diesel: %.3f€", self.dieselPriceSelf]];
+        } else if (self.dieselPriceServed > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"✓ Diesel (serv.): %.3f€", self.dieselPriceServed]];
+        }
+    } else if (type == FuelTypeLPG) {
+        if (self.lpgPrice > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"✓ GPL: %.3f€", self.lpgPrice]];
+        }
+    } else {
+        if (self.petrolPriceSelf > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"✓ Benzina: %.3f€", self.petrolPriceSelf]];
+        } else if (self.petrolPriceServed > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"✓ Benzina (serv.): %.3f€", self.petrolPriceServed]];
+        }
     }
 
-    if (self.dieselPriceSelf > 0.1) {
-        [parts addObject:[NSString stringWithFormat:@"Diesel: %.3f€", self.dieselPriceSelf]];
-    } else if (self.dieselPriceServed > 0.1) {
-        [parts addObject:[NSString stringWithFormat:@"Diesel (serv.): %.3f€", self.dieselPriceServed]];
+    // Altri carburanti
+    if (type != FuelTypePetrol) {
+        if (self.petrolPriceSelf > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"Benzina: %.3f€", self.petrolPriceSelf]];
+        } else if (self.petrolPriceServed > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"Benzina (serv.): %.3f€", self.petrolPriceServed]];
+        }
     }
-
-    if (self.lpgPrice > 0.1) {
+    if (type != FuelTypeDiesel) {
+        if (self.dieselPriceSelf > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"Diesel: %.3f€", self.dieselPriceSelf]];
+        } else if (self.dieselPriceServed > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"Diesel (serv.): %.3f€", self.dieselPriceServed]];
+        }
+    }
+    if (type != FuelTypeLPG && self.lpgPrice > 0.1) {
         [parts addObject:[NSString stringWithFormat:@"GPL: %.3f€", self.lpgPrice]];
     }
 
@@ -125,7 +153,7 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
             self.coordinate = station.coordinate;
         }
         self.title = [station displayTitleForFuelType:fuelType] ?: @"⛽ Distributore";
-        self.subtitle = [station formattedSubtitle] ?: @"";
+        self.subtitle = [station formattedSubtitleForFuelType:fuelType] ?: @"";
     }
     return self;
 }

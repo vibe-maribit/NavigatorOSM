@@ -69,6 +69,8 @@
 @property (nonatomic, strong) NSMutableArray<FuelStationAnnotation *> *fuelAnnotations;
 @property (nonatomic, assign) BOOL hasFetchedInitialFuelStations;
 @property (nonatomic, assign) NSTimeInterval lastTilePrefetchTime;
+@property (nonatomic, strong) UIButton *fuelToggleButton;
+@property (nonatomic, assign) BOOL isFuelVisibleDuringNavigation;
 
 // Controlli Flottanti (FAB) — Colonna Verticale Collapsible
 @property (nonatomic, strong) UIButton *topSearchPill;
@@ -205,9 +207,8 @@
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [UIApplication sharedApplication].idleTimerDisabled = YES;
-    [self updateCameraAnnotationsOnMap];
-    if (self.currentLocation) {
-        [self refreshSpeedCamerasAroundCoordinate:self.currentLocation.coordinate];
+    if (self.isNavigating && self.currentRoute) {
+        [self updateCameraAnnotationsOnMap];
     }
 }
 
@@ -251,6 +252,15 @@
     };
     self.maneuverHUD.hidden = YES;
     [self.view addSubview:self.maneuverHUD];
+
+    // 3b. Pulsante Flottante Toggle Distributori in Alto a Destra (visibile solo durante la rotta)
+    CGFloat fuelBtnSize = 48.0;
+    self.fuelToggleButton = [self createCircularButtonWithTitle:@"⛽" frame:CGRectMake(w - fuelBtnSize - 16, 20, fuelBtnSize, fuelBtnSize)];
+    self.fuelToggleButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
+    [self.fuelToggleButton addTarget:self action:@selector(toggleFuelStationsOnMap) forControlEvents:UIControlEventTouchUpInside];
+    self.fuelToggleButton.hidden = YES;
+    self.fuelToggleButton.alpha = 0.0;
+    [self.view addSubview:self.fuelToggleButton];
 
     // 4. Barra di Viaggio Inferiore Stile Google Maps (ETA grande, minuti, km, tasto stop)
     self.tripBar = [[ModernTripBarView alloc] initWithFrame:CGRectMake(24, h - 86, MIN(440, w - 48), 68)];
@@ -820,6 +830,21 @@
         [self.poiAnnotations removeAllObjects];
     }
 
+    // Nascondi pulsante carburante e resetta stato toggle
+    self.fuelToggleButton.hidden = YES;
+    self.fuelToggleButton.alpha = 0.0;
+    self.isFuelVisibleDuringNavigation = NO;
+
+    // Rimuovi distributori e autovelox dalla mappa per garantire la massima pulizia e reattività
+    if (self.fuelAnnotations.count > 0) {
+        [self.mapView removeAnnotations:self.fuelAnnotations];
+        [self.fuelAnnotations removeAllObjects];
+    }
+    if (self.cameraAnnotations.count > 0) {
+        [self.mapView removeAnnotations:self.cameraAnnotations];
+        [self.cameraAnnotations removeAllObjects];
+    }
+
     self.isNavigating = NO;
     [self stopDisplayLink];
     self.isCruisingWithVehiclePuck = NO;
@@ -1039,7 +1064,12 @@
     self.mapView.showsUserLocation = YES;
 
     [self refreshSpeedCamerasForRoute:selectedRoute];
-    [self refreshFuelStationsForRoute:selectedRoute];
+    self.isFuelVisibleDuringNavigation = NO; // Spento di default: attivabile al volo con il toggle ⛽
+    [self updateFuelToggleButtonAppearance];
+    self.fuelToggleButton.hidden = NO;
+    [UIView animateWithDuration:0.25 animations:^{
+        self.fuelToggleButton.alpha = 1.0;
+    }];
     [self.osmOverlay prefetchTilesAlongRoute:selectedRoute currentDistance:0 lookaheadMeters:4000.0];
     self.isTrackingVehicle = YES;
 
@@ -1201,8 +1231,6 @@
 
         [weakSelf.routeSelector setRoutes:routes];
         weakSelf.routeSelector.hidden = NO;
-        [weakSelf refreshSpeedCamerasForRoute:routes[0]];
-        [weakSelf refreshFuelStationsForRoute:routes[0]];
         [weakSelf.osmOverlay prefetchTilesAlongRoute:routes[0] currentDistance:0 lookaheadMeters:4000.0];
 
         NSString *foundVoiceFmt = NLString(@"FOUND_ROUTES_VOICE", @"Trovati %lu itinerari. Tocca quello desiderato per iniziare.");
@@ -1388,12 +1416,10 @@
 
     if (!self.hasFetchedInitialCameras && CLLocationCoordinate2DIsValid(location.coordinate) && fabs(location.coordinate.latitude) > 0.1) {
         self.hasFetchedInitialCameras = YES;
-        [self refreshSpeedCamerasAroundCoordinate:location.coordinate];
     }
 
     if (!self.hasFetchedInitialFuelStations && CLLocationCoordinate2DIsValid(location.coordinate) && fabs(location.coordinate.latitude) > 0.1) {
         self.hasFetchedInitialFuelStations = YES;
-        [self refreshFuelStationsAroundCoordinate:location.coordinate];
     }
 
     // Prefetching predittivo dei tasselli mappa (in navigazione lungo la rotta o a prua del veicolo)
@@ -1665,6 +1691,7 @@
 }
 
 - (void)refreshSpeedCamerasAroundCoordinate:(CLLocationCoordinate2D)coord {
+    if (!self.isNavigating) return;
     if (!CLLocationCoordinate2DIsValid(coord) || (fabs(coord.latitude) < 0.1 && fabs(coord.longitude) < 0.1)) return;
     __weak NavigationViewController *weakSelf = self;
     [[SpeedCameraService sharedService] fetchCamerasAroundCoordinate:coord radiusMeters:15000 completion:^(NSArray<SpeedCamera *> *cameras, NSError *error) {
@@ -1675,7 +1702,7 @@
 }
 
 - (void)refreshSpeedCamerasForRoute:(RouteInfo *)route {
-    if (!route) return;
+    if (!self.isNavigating || !route) return;
     __weak NavigationViewController *weakSelf = self;
     [[SpeedCameraService sharedService] fetchCamerasAlongRoute:route completion:^(NSArray<SpeedCamera *> *cameras, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1688,8 +1715,15 @@
     if (!self.cameraAnnotations) {
         self.cameraAnnotations = [NSMutableArray array];
     }
-    [self.mapView removeAnnotations:self.cameraAnnotations];
-    [self.cameraAnnotations removeAllObjects];
+    if (self.cameraAnnotations.count > 0) {
+        [self.mapView removeAnnotations:self.cameraAnnotations];
+        [self.cameraAnnotations removeAllObjects];
+    }
+
+    // Mostra gli autovelox su mappa SOLO se stiamo navigando attivamente!
+    if (!self.isNavigating || !self.currentRoute) {
+        return;
+    }
 
     NSArray *anns = [[SpeedCameraService sharedService] annotationsForCachedCameras];
     if (anns.count > 0) {
@@ -1698,13 +1732,38 @@
     }
 }
 
-#pragma mark - Gestione Distributori Carburante
+#pragma mark - Gestione Distributori Carburante (Toggle al Volo ⛽)
 
 - (BOOL)shouldShowFuelStationsOnMap {
-    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"ShowFuelStationsOnMap"]) {
-        return [[NSUserDefaults standardUserDefaults] boolForKey:@"ShowFuelStationsOnMap"];
+    // I distributori sono visualizzati sulla mappa SOLO se siamo in navigazione attiva E il toggle al volo è abilitato!
+    return self.isNavigating && self.isFuelVisibleDuringNavigation;
+}
+
+- (void)toggleFuelStationsOnMap {
+    self.isFuelVisibleDuringNavigation = !self.isFuelVisibleDuringNavigation;
+    [self updateFuelToggleButtonAppearance];
+
+    if (self.isFuelVisibleDuringNavigation) {
+        if (self.currentRoute) {
+            [self refreshFuelStationsForRoute:self.currentRoute];
+        }
+        [[VoiceGuidanceService sharedService] speakAlert:NLString(@"FUEL_SHOWN_VOICE", @"Distributori attivati sulla mappa.")];
+    } else {
+        [self updateFuelAnnotationsOnMap];
+        [[VoiceGuidanceService sharedService] speakAlert:NLString(@"FUEL_HIDDEN_VOICE", @"Distributori nascosti.")];
     }
-    return YES;
+}
+
+- (void)updateFuelToggleButtonAppearance {
+    if (self.isFuelVisibleDuringNavigation) {
+        self.fuelToggleButton.layer.borderColor = [[UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:1.0] CGColor]; // Verde attivo
+        self.fuelToggleButton.layer.borderWidth = 2.4;
+        self.fuelToggleButton.backgroundColor = [UIColor colorWithRed:0.08 green:0.25 blue:0.14 alpha:0.95];
+    } else {
+        self.fuelToggleButton.layer.borderColor = [[UIColor colorWithWhite:0.35 alpha:0.75] CGColor];
+        self.fuelToggleButton.layer.borderWidth = 1.0;
+        self.fuelToggleButton.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.92];
+    }
 }
 
 - (void)refreshFuelStationsAroundCoordinate:(CLLocationCoordinate2D)coord {
