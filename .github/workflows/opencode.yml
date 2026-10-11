@@ -172,6 +172,8 @@ jobs:
           if [ "$IS_PR" = "true" ] || git ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null 2>&1; then
             git fetch origin "$BRANCH_NAME"
             git checkout -B "$BRANCH_NAME" "origin/$BRANCH_NAME"
+            git fetch origin "$DEFAULT_BRANCH"
+            git merge "origin/$DEFAULT_BRANCH" --no-edit -m "Sync $DEFAULT_BRANCH into $BRANCH_NAME" || true
           else
             git fetch origin "$DEFAULT_BRANCH"
             git checkout -B "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
