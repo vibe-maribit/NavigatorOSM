@@ -258,6 +258,7 @@ jobs:
           echo "has_conflict=$HAS_CONFLICT" >> "$GITHUB_OUTPUT"
 
       - name: Auto-merge PR su develop e chiusura Issue
+        id: merge
         if: steps.build_review.outputs.verdict == 'PASS' && steps.push.outputs.has_conflict != 'true'
         run: |
           API="$GH_API/repos/$REPO"
@@ -285,12 +286,92 @@ jobs:
 
           if [ "$(echo "$MERGE_RESP" | jq -r '.merged // false')" = "true" ]; then
             echo "✅ PR mergiata con successo su $DEFAULT_BRANCH."
+            echo "merged=true" >> "$GITHUB_OUTPUT"
             if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$PR_NUMBER" ]; then
               curl -s -X PATCH "$API/issues/$ISSUE_NUMBER" \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d '{"state":"closed","state_reason":"completed"}' > /dev/null || true
             fi
+          fi
+
+      - name: Bump versione semantico, crea tag e avvia Release
+        id: release_trigger
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          API="$GH_API/repos/$REPO"
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-develop}"
+
+          # 1. Determina tipo di bump (major, minor, patch)
+          BUMP_TYPE="patch"
+          LABELS=""
+          if [ -n "$ISSUE_NUMBER" ]; then
+            LABELS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/issues/$ISSUE_NUMBER" | jq -r '.labels[].name' 2>/dev/null || true)
+          fi
+
+          TEXT_FOR_TYPE="${ISSUE_TITLE:-} ${COMMENT_BODY:-} $LABELS"
+          if echo "$TEXT_FOR_TYPE" | grep -Eiq '(\[BREAKING\]|breaking[[:space:]_-]change|--bump[ =]major|\bmajor\b)'; then
+            BUMP_TYPE="major"
+          elif echo "$TEXT_FOR_TYPE" | grep -Eiq '(\[FEAT\]|enhancement|\bfeature\b|--bump[ =]minor|nuova funzionalità)'; then
+            BUMP_TYPE="minor"
+          else
+            BUMP_TYPE="patch"
+          fi
+
+          echo "🔍 Tipo di bump semantico rilevato: $BUMP_TYPE"
+
+          # 2. Allinea il branch develop locale
+          git checkout "$DEFAULT_BRANCH"
+          git pull origin "$DEFAULT_BRANCH"
+
+          # 3. Calcola ed applica nuova versione
+          chmod +x scripts/bump-version.py
+          NEW_VER=$(python3 scripts/bump-version.py "$BUMP_TYPE")
+          NEW_TAG="v$NEW_VER"
+          echo "🏷️ Nuova versione calcolata: $NEW_VER (Tag: $NEW_TAG)"
+
+          # 4. Commit & push su develop
+          git add control NavigatoreOSM/Info.plist android/app/build.gradle
+          git commit -m "chore(release): bump versione a $NEW_TAG [skip ci]" || echo "Nessuna modifica di versione da committare."
+          git push origin "$DEFAULT_BRANCH"
+
+          # 5. Crea e pusha il tag Git
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG generata da OpenCode per #${ISSUE_NUMBER:-PR}"
+          git push origin "$NEW_TAG"
+          echo "✅ Tag $NEW_TAG pushato con successo."
+
+          # 6. Attiva il workflow release.yml via workflow_dispatch
+          echo "🚀 Invio trigger workflow_dispatch per release.yml con versione $NEW_TAG..."
+          DISPATCH_STATUS=$(curl -s -w "%{http_code}" -o /tmp/dispatch_out.json -X POST \
+            "$API/actions/workflows/release.yml/dispatches" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "{\"ref\":\"$NEW_TAG\",\"inputs\":{\"version\":\"$NEW_TAG\"}}")
+
+          if [ "$DISPATCH_STATUS" = "204" ]; then
+            echo "✅ Workflow release.yml avviato con successo per $NEW_TAG!"
+          else
+            echo "⚠️ Risposta API dispatch: HTTP $DISPATCH_STATUS. Riprovo con ref $DEFAULT_BRANCH..."
+            curl -s -X POST \
+              "$API/actions/workflows/release.yml/dispatches" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$DEFAULT_BRANCH\",\"inputs\":{\"version\":\"$NEW_TAG\"}}" || true
+          fi
+
+          # 7. Commenta sull'Issue con link al rilascio
+          if [ -n "$ISSUE_NUMBER" ]; then
+            MSG=$(printf '%s\n\n- %s\n- %s\n' \
+              "🎉 **Rilascio avviato automaticamente!**" \
+              "**Versione**: [\`$NEW_TAG\`](https://github.com/$REPO/releases/tag/$NEW_TAG) ($BUMP_TYPE bump)" \
+              "**Workflow**: la build Theos iOS (IPA + DEB per Cydia) e Android (GPSTether APK) è in esecuzione su GitHub Actions.")
+            JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
+            curl -s -X POST "$API/issues/$ISSUE_NUMBER/comments" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$JSON_BODY" > /dev/null || true
           fi
 
       - name: Salvataggio progressi su timeout o cancellazione
@@ -306,10 +387,10 @@ jobs:
           TARGET_ISSUE="$ISSUE_NUMBER"
           [ -z "$TARGET_ISSUE" ] && TARGET_ISSUE="${{ steps.ctx.outputs.pr_number }}"
           if [ -n "$TARGET_ISSUE" ]; then
-            MSG="⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta.
-
-            I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:
-            \`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`"
+            MSG=$(printf '%s\n\n%s\n%s\n' \
+              "⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta." \
+              "I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:" \
+              "\`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`")
             JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
             curl -s -X POST "$API/issues/$TARGET_ISSUE/comments" \
               -H "Authorization: Bearer $GH_TOKEN" \
