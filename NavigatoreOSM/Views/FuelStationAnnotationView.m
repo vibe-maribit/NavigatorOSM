@@ -57,7 +57,6 @@
 - (void)updateWithStation:(FuelStation *)station fuelType:(FuelType)type {
     if (!station || !self.titleLabel) return;
 
-    double p = [station effectivePriceForFuelType:type];
     NSString *bName = (station.brand && [station.brand isKindOfClass:[NSString class]] && station.brand.length > 0)
         ? station.brand
         : ((station.name && [station.name isKindOfClass:[NSString class]]) ? station.name : @"Distributore");
@@ -67,19 +66,23 @@
         bName = [bName substringToIndex:8];
     }
 
-    NSString *fuelName = [[FuelPriceService sharedService] nameForFuelType:type];
+    // I badge riflettono i carburanti EFFETTIVAMENTE disponibili nella stazione,
+    // non il tipo selezionato nel filtro.
+    NSString *badges = [station availableFuelBadgeString];
+    NSString *glyph = [station markerGlyphString] ?: @"⛽";
+    double p = [station effectivePriceForFuelType:type];
 
     if (p > 0.1) {
-        self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@ • %@ %.2f€", bName, fuelName, p];
+        self.titleLabel.text = [NSString stringWithFormat:@"%@ %@ • %@ %.2f€", glyph, bName, badges, p];
     } else {
-        self.titleLabel.text = [NSString stringWithFormat:@"⛽ %@ (%@)", bName, fuelName];
+        self.titleLabel.text = [NSString stringWithFormat:@"%@ %@ • %@", glyph, bName, badges];
     }
 
     // Calcola dimensione dinamica del pill in modo sicuro
     UIFont *font = self.titleLabel.font ?: [UIFont boldSystemFontOfSize:11.5];
     NSString *txt = self.titleLabel.text ?: @"⛽ Distributore";
     CGSize fitSize = [txt sizeWithAttributes:@{NSFontAttributeName: font}];
-    CGFloat width = MAX(88.0, fitSize.width + 18.0);
+    CGFloat width = MAX(88.0, MIN(250.0, fitSize.width + 18.0));
 
     // In MapKit su iOS 9, aggiorniamo solo i bounds e il centerOffset,
     // preservando la coordinata del centro gestita dalla mappa!

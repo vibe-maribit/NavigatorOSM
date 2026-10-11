@@ -164,9 +164,13 @@ static NSArray *POICategoriesDefinition(void) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [weakSelf.spinner stopAnimating];
                     NSMutableArray *annotations = [NSMutableArray array];
-                    FuelType fType = [FuelPriceService sharedService].selectedFuelType;
+                    FuelType filterType = [FuelPriceService sharedService].selectedFuelType;
                     for (FuelStation *st in stations) {
-                        [annotations addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:fType]];
+                        // Il filtro limita le stazioni mostrate; il marker mostra
+                        // i carburanti realmente disponibili nella stazione.
+                        if (![st hasFuelType:filterType]) continue;
+                        FuelType displayType = [st primaryAvailableFuelType];
+                        [annotations addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:displayType]];
                     }
                     if ([weakSelf.delegate respondsToSelector:@selector(quickPOIShelfView:didFindPOIs:categoryName:)]) {
                         [weakSelf.delegate quickPOIShelfView:weakSelf didFindPOIs:annotations categoryName:categoryName];

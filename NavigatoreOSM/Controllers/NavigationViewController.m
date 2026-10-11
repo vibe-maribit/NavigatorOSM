@@ -111,6 +111,9 @@
     self.mapView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.mapView.delegate = self;
     self.mapView.showsUserLocation = YES;
+    // Bussola nativa MapKit in alto a destra (mostrata quando la mappa non è a Nord).
+    // Il pulsante flottante ⛽ viene posizionato a sinistra per non sovrapporsi (vedi setupModernUI).
+    self.mapView.showsCompass = YES;
 
     // Edifici 3D (palazzi estrusi): disattivati di default per massime prestazioni su Apple A5 / iPad Mini 1
     BOOL showBuildings = NO;
@@ -254,8 +257,16 @@
     [self.view addSubview:self.maneuverHUD];
 
     // 3b. Pulsante Flottante Toggle Distributori in Alto a Destra (visibile solo durante la rotta)
+    // NB: la bussola nativa di MapKit occupa l'angolo in alto a destra (circa 40pt).
+    // Riserviamo quello spazio spostando il pulsante ⛽ a sinistra della bussola, così da
+    // mantenere entrambi visibili e correttamente spaziati anche in orientamento 3D/ruotato.
     CGFloat fuelBtnSize = 48.0;
-    self.fuelToggleButton = [self createCircularButtonWithTitle:@"⛽" frame:CGRectMake(w - fuelBtnSize - 16, 20, fuelBtnSize, fuelBtnSize)];
+    CGFloat compassReservedWidth = 56.0;
+    CGFloat fuelBtnX = w - fuelBtnSize - 16.0 - compassReservedWidth;
+    if (fuelBtnX < 24.0) {
+        fuelBtnX = 24.0;
+    }
+    self.fuelToggleButton = [self createCircularButtonWithTitle:@"⛽" frame:CGRectMake(fuelBtnX, 20, fuelBtnSize, fuelBtnSize)];
     self.fuelToggleButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
     [self.fuelToggleButton addTarget:self action:@selector(toggleFuelStationsOnMap) forControlEvents:UIControlEventTouchUpInside];
     self.fuelToggleButton.hidden = YES;
