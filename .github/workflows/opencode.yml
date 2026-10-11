@@ -19,6 +19,10 @@ permissions:
   issues: write
   actions: write
 
+concurrency:
+  group: opencode-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   opencode-github:
     if: |
@@ -58,18 +62,38 @@ jobs:
       MAX_ITERATIONS: "4"
 
     steps:
-      - name: Verifica autorizzazione utente
+      - name: Verifica autorizzazione utente e stato issue
         run: |
           ALLOWED_USERS="${{ vars.OPENCODE_ALLOWED_USERS || 'nik2208 vibe-maribit' }}"
           if [ "$IS_MANUAL" = "true" ]; then exit 0; fi
           ASSOC="${{ github.event.issue.author_association || github.event.comment.author_association }}"
+          IS_AUTH=false
           if [ "$ASSOC" = "OWNER" ] || [ "$ASSOC" = "COLLABORATOR" ] || [ "$ASSOC" = "MEMBER" ]; then
             echo "Utente '$COMMENT_AUTHOR' autorizzato con associazione $ASSOC."
-            exit 0
+            IS_AUTH=true
+          elif echo " $ALLOWED_USERS " | grep -q " $COMMENT_AUTHOR "; then
+            echo "Utente '$COMMENT_AUTHOR' presente nella whitelist autorizzata."
+            IS_AUTH=true
           fi
-          if ! echo " $ALLOWED_USERS " | grep -q " $COMMENT_AUTHOR "; then
+          if [ "$IS_AUTH" != "true" ]; then
             echo "Utente '$COMMENT_AUTHOR' non autorizzato. Interrompo."
             exit 1
+          fi
+
+          # Pre-check rapido: issue chiusa o etichette di blocco (duplicate, invalid, wontfix)
+          if [ -n "$ISSUE_NUMBER" ]; then
+            API="$GH_API/repos/$REPO"
+            ISS_JSON=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/issues/$ISSUE_NUMBER")
+            IS_CLOSED=$(echo "$ISS_JSON" | jq -r '.state == "closed"')
+            LABELS=$(echo "$ISS_JSON" | jq -r '.labels[].name' 2>/dev/null || true)
+            if echo "$LABELS" | grep -Eq '(duplicate|invalid|wontfix)'; then
+              echo "⚠️ Issue #$ISSUE_NUMBER contrassegnata con etichetta di blocco ($LABELS). Termino."
+              exit 0
+            fi
+            if [ "$IS_CLOSED" = "true" ] && ! echo "$COMMENT_BODY" | grep -Eiq '(riapri|reopen|nuov[oa])'; then
+              echo "ℹ️ Issue #$ISSUE_NUMBER risulta già chiusa. Nessun comando di riapertura. Termino."
+              exit 0
+            fi
           fi
 
       - name: Reagisci al comando (👀)
@@ -164,6 +188,9 @@ jobs:
             echo "== Commenti recenti ==" >> /tmp/context.txt
             curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API/issues/$PR_NUMBER/comments" | jq -r '.[] | "- (\(.user.login)): \(.body)"' >> /tmp/context.txt || true
           fi
+          # Scarica elenco issue recenti per la fase di triage e deduplicazione
+          curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$API/issues?state=all&per_page=20" | jq -r '.[] | "#\(.number) [\(.state)]: \(.title)"' > /tmp/recent_issues.txt 2>/dev/null || true
           printf '%s' "$COMMENT_BODY" | sed -e 's|/opencode||g' -e 's|/oc||g' > /tmp/clean_prompt.txt
 
       - name: Risolvi modello (Visual / Default / Override)
@@ -194,7 +221,7 @@ jobs:
           [ -z "$FINAL_MODEL" ] && FINAL_MODEL="opencode/big-pickle"
           echo "selected_model=$FINAL_MODEL" >> "$GITHUB_OUTPUT"
 
-      - name: Esegui Orchestrazione OpenCode (Plan + Build/Review Loop)
+      - name: Esegui Orchestrazione OpenCode (Triage + Plan + Build/Review Loop)
         id: build_review
         run: |
           export BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
@@ -207,8 +234,49 @@ jobs:
           VERDICT=$(grep '^VERDICT=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "FAIL")
           echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
 
+      - name: Gestisci esito Triage (Già implementato o Duplicato)
+        if: steps.build_review.outputs.verdict == 'ALREADY_DONE' || steps.build_review.outputs.verdict == 'DUPLICATE'
+        run: |
+          API="$GH_API/repos/$REPO"
+          VERDICT="${{ steps.build_review.outputs.verdict }}"
+          REASON=$(cat /tmp/triage_reason.txt 2>/dev/null || echo "Nessun dettaglio fornito dal triage.")
+
+          if [ "$VERDICT" = "ALREADY_DONE" ]; then
+            if [ -n "$ISSUE_NUMBER" ]; then
+              MSG=$(printf '%s\n\n```\n%s\n```\n\n%s' \
+                "🔍 **Triage OpenCode: Funzionalità o correzione già presente!**" \
+                "$REASON" \
+                "Il codice sul branch \`develop\` soddisfa già i requisiti. Nessuna modifica necessaria.")
+              JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
+              curl -s -X POST "$API/issues/$ISSUE_NUMBER/comments" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$JSON_BODY" > /dev/null || true
+            fi
+            echo "✅ Concluso: la richiesta risulta già implementata."
+          elif [ "$VERDICT" = "DUPLICATE" ]; then
+            if [ -n "$ISSUE_NUMBER" ]; then
+              curl -s -X POST "$API/issues/$ISSUE_NUMBER/labels" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"labels":["duplicate"]}' > /dev/null || true
+
+              MSG=$(printf '%s\n\n```\n%s\n```\n\n%s' \
+                "🔍 **Triage OpenCode: Segnalazione Duplicata**" \
+                "$REASON" \
+                "L'elaborazione automatica è stata sospesa per evitare modifiche duplicate.")
+              JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
+              curl -s -X POST "$API/issues/$ISSUE_NUMBER/comments" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$JSON_BODY" > /dev/null || true
+            fi
+            echo "⚠️ Concluso: la richiesta è stata classificata come duplicato."
+          fi
+
       - name: Sincronizza con develop, pusha e apri/aggiorna PR
         id: push
+        if: steps.build_review.outputs.verdict != 'ALREADY_DONE' && steps.build_review.outputs.verdict != 'DUPLICATE'
         run: |
           API="$GH_API/repos/$REPO"
           BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
