@@ -363,10 +363,10 @@ jobs:
 
           # 7. Commenta sull'Issue con link al rilascio
           if [ -n "$ISSUE_NUMBER" ]; then
-            MSG="🎉 **Rilascio avviato automaticamente!**
-
-- **Versione**: [\`$NEW_TAG\`](https://github.com/$REPO/releases/tag/$NEW_TAG) ($BUMP_TYPE bump)
-- **Workflow**: la build Theos iOS (IPA + DEB per Cydia) e Android (GPSTether APK) è in esecuzione su GitHub Actions."
+            MSG=$(printf '%s\n\n- %s\n- %s\n' \
+              "🎉 **Rilascio avviato automaticamente!**" \
+              "**Versione**: [\`$NEW_TAG\`](https://github.com/$REPO/releases/tag/$NEW_TAG) ($BUMP_TYPE bump)" \
+              "**Workflow**: la build Theos iOS (IPA + DEB per Cydia) e Android (GPSTether APK) è in esecuzione su GitHub Actions.")
             JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
             curl -s -X POST "$API/issues/$ISSUE_NUMBER/comments" \
               -H "Authorization: Bearer $GH_TOKEN" \
@@ -387,10 +387,10 @@ jobs:
           TARGET_ISSUE="$ISSUE_NUMBER"
           [ -z "$TARGET_ISSUE" ] && TARGET_ISSUE="${{ steps.ctx.outputs.pr_number }}"
           if [ -n "$TARGET_ISSUE" ]; then
-            MSG="⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta.
-
-            I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:
-            \`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`"
+            MSG=$(printf '%s\n\n%s\n%s\n' \
+              "⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta." \
+              "I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:" \
+              "\`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`")
             JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
             curl -s -X POST "$API/issues/$TARGET_ISSUE/comments" \
               -H "Authorization: Bearer $GH_TOKEN" \
