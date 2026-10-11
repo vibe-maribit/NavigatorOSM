@@ -1,0 +1,49 @@
+name: 'Bug Report / Fix per OpenCode'
+description: 'Segnala un difetto o malfunzionamento da far correggere a OpenCode'
+title: '[BUG]: '
+labels: ['bug', 'autonomous']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Segnala un problema riscontrato in NavigatorOSM (su iPad iOS 9.3.5 o Android companion) per consentire a OpenCode di riprodurlo, risolverlo e verificare la compilazione.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Descrizione del Problema
+      description: Cosa sta succedendo di anomalo o inatteso?
+      placeholder: Si verifica un crash / freeze / anomalia quando...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Passi per Riprodurre
+      description: Elenco ordinato dei passi per riprodurre il problema.
+      placeholder: |
+        1. Apri la schermata...
+        2. Tocca...
+        3. Si verifica l'errore...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento Atteso
+      description: Cosa dovrebbe invece accadere?
+      placeholder: L'app dovrebbe invece...
+    validations:
+      required: true
+  - type: textarea
+    id: logs_or_screenshots
+    attributes:
+      label: Screenshot, Crash Log o Syslog (Opzionale)
+      description: Trascina screenshot o incolla estratti di crash log / console syslog.
+  - type: input
+    id: oc_trigger
+    attributes:
+      label: Comando OpenCode
+      description: Lascia il comando qui sotto per avviare subito OpenCode sull'apertura dell'issue.
+      value: '/oc Ripara il bug descritto e verifica la compilazione Theos/Gradle'
+    validations:
+      required: true

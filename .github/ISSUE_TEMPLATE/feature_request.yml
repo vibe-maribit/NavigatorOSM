@@ -1,0 +1,50 @@
+name: 'Feature Request / Task per OpenCode'
+description: 'Richiedi una nuova funzionalità o un task da far implementare a OpenCode'
+title: '[FEAT]: '
+labels: ['enhancement', 'autonomous']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Grazie per la segnalazione! Compila questo template per consentire a OpenCode di analizzare e implementare la funzionalità per NavigatorOSM (iOS 9.3.5 / armv7 o Android companion).
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrizione della Funzionalità
+      description: Spiega chiaramente cosa deve fare la funzionalità e qual è il valore atteso.
+      placeholder: Vorrei che l'app permettesse di...
+    validations:
+      required: true
+  - type: textarea
+    id: usecase_performance
+    attributes:
+      label: Contesto Cruscotto & Considerazioni Prestazioni (RAM < 25MB)
+      description: Come migliora l'esperienza alla guida? Ricorda che iPad Mini 1 ha 512 MB di RAM totale ed esegue iOS 9.3.5.
+      placeholder: Utilizzo durante la guida; footprint di memoria ridotto per Apple A5...
+    validations:
+      required: false
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requisiti e Comportamento Atteso
+      description: Dettaglia i criteri di accettazione specifici.
+      placeholder: |
+        1. Deve essere presente il pulsante / elemento X
+        2. Al tocco / evento deve succedere Y
+        3. La build Theos (e/o Gradle) deve compilare con successo
+    validations:
+      required: true
+  - type: textarea
+    id: visual_context
+    attributes:
+      label: Riferimenti Visivi o Immagini (Opzionale)
+      description: Trascina qui screenshot o mockup. OpenCode utilizzerà un modello visivo (es. opencode/space-bunny-free) per analizzarli.
+      placeholder: Incolla qui le immagini o screenshot...
+  - type: input
+    id: oc_trigger
+    attributes:
+      label: Comando OpenCode
+      description: Lascia il comando qui sotto per avviare subito OpenCode sull'apertura dell'issue.
+      value: '/oc Implementa la feature secondo i requisiti sopra descritti'
+    validations:
+      required: true

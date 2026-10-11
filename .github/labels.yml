@@ -1,0 +1,51 @@
+- name: "autonomous"
+  color: "1d76db"
+  description: "Triggers autonomous agent pipeline upon issue creation or command"
+
+- name: "bug"
+  color: "d73a4a"
+  description: "Something isn't working as expected"
+
+- name: "enhancement"
+  color: "a2eeef"
+  description: "New feature or request"
+
+- name: "documentation"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: "visual"
+  color: "e99695"
+  description: "Issue contains screenshots or visual design mockups"
+
+- name: "plan-ready"
+  color: "0e8a16"
+  description: "Autonomous planning completed and plan committed"
+
+- name: "in-progress"
+  color: "fbca04"
+  description: "Autonomous agent is currently implementing this issue"
+
+- name: "checkpoint"
+  color: "b60205"
+  description: "Task paused at timeout checkpoint, needs follow-up run"
+
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention or human feedback needed"
+
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers"
+
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+
+- name: "invalid"
+  color: "e4e669"
+  description: "This issue doesn't seem right"
+
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"

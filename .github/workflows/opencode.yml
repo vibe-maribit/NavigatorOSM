@@ -1,0 +1,318 @@
+name: OpenCode GitHub Integration
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Istruzione manuale per OpenCode"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+jobs:
+  opencode-github:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '/oc') || contains(github.event.issue.body, '/opencode'))) ||
+      (github.event_name != 'issues' &&
+        github.event.comment.user.login != 'github-actions[bot]' &&
+        (contains(github.event.comment.body, '/oc') || contains(github.event.comment.body, '/opencode')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      GH_API: "https://api.github.com"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ vars.DEFAULT_BRANCH || 'develop' }}
+      COMMENT_BODY: ${{ github.event.comment.body || github.event.issue.body || github.event.inputs.prompt }}
+      COMMENT_AUTHOR: ${{ github.event.comment.user.login || github.event.issue.user.login || github.actor }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      IS_PR_EVENT: ${{ github.event_name == 'pull_request_review_comment' }}
+      IS_MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+      PR_NUMBER_FROM_EVENT: ${{ github.event.pull_request.number }}
+      PR_HEAD_REF_FROM_EVENT: ${{ github.event.pull_request.head.ref }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+      RUN_NUMBER: ${{ github.run_number }}
+      # Chiavi API opzionali per modelli a pagamento (se configurate nei Secrets)
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Modello predefinito e visivo
+      DEFAULT_MODEL: ${{ vars.OPENCODE_DEFAULT_MODEL || 'opencode/big-pickle' }}
+      VISUAL_MODEL: ${{ vars.OPENCODE_VISUAL_MODEL || 'opencode/space-bunny-free' }}
+      MAX_ITERATIONS: "4"
+
+    steps:
+      - name: Verifica autorizzazione utente
+        run: |
+          ALLOWED_USERS="${{ vars.OPENCODE_ALLOWED_USERS || 'nik2208 vibe-maribit' }}"
+          if [ "$IS_MANUAL" = "true" ]; then exit 0; fi
+          ASSOC="${{ github.event.issue.author_association || github.event.comment.author_association }}"
+          if [ "$ASSOC" = "OWNER" ] || [ "$ASSOC" = "COLLABORATOR" ] || [ "$ASSOC" = "MEMBER" ]; then
+            echo "Utente '$COMMENT_AUTHOR' autorizzato con associazione $ASSOC."
+            exit 0
+          fi
+          if ! echo " $ALLOWED_USERS " | grep -q " $COMMENT_AUTHOR "; then
+            echo "Utente '$COMMENT_AUTHOR' non autorizzato. Interrompo."
+            exit 1
+          fi
+
+      - name: Reagisci al comando (👀)
+        id: react
+        run: |
+          API="$GH_API/repos/$REPO"
+          if [ -n "$COMMENT_ID" ]; then
+            RPATH="issues/comments/$COMMENT_ID/reactions"
+          elif [ -n "$ISSUE_NUMBER" ]; then
+            RPATH="issues/$ISSUE_NUMBER/reactions"
+          else
+            RPATH=""
+          fi
+          echo "path=$RPATH" >> "$GITHUB_OUTPUT"
+          if [ -n "$RPATH" ]; then
+            curl -s -X POST "$API/$RPATH" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d '{"content":"eyes"}' > /dev/null || true
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configura git
+        run: |
+          git config --global user.name "opencode-bot"
+          git config --global user.email "opencode-bot@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+
+      - name: Pre-pull Docker image Theos
+        run: |
+          docker pull cauan/theos || true
+
+      - name: Install OpenCode CLI
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Determina contesto e branch
+        id: ctx
+        run: |
+          set -e
+          API="$GH_API/repos/$REPO"
+          if [ "$IS_MANUAL" = "true" ]; then
+            IS_PR=false; PR_NUMBER=""; BRANCH_NAME="opencode-manual-$RUN_NUMBER"
+          elif [ "$IS_PR_EVENT" = "true" ]; then
+            IS_PR=true; PR_NUMBER="$PR_NUMBER_FROM_EVENT"; BRANCH_NAME="$PR_HEAD_REF_FROM_EVENT"
+          else
+            ISSUE_JSON=$(curl -s \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "$API/issues/$ISSUE_NUMBER")
+            if echo "$ISSUE_JSON" | jq -e '.pull_request' > /dev/null 2>&1; then
+              IS_PR=true; PR_NUMBER="$ISSUE_NUMBER"
+              BRANCH_NAME=$(curl -s \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "$API/pulls/$PR_NUMBER" | jq -r '.head.ref')
+            else
+              IS_PR=false; PR_NUMBER=""; BRANCH_NAME="opencode-issue-$ISSUE_NUMBER"
+            fi
+          fi
+
+          PLAN_KEY=$(printf '%s' "$BRANCH_NAME" | tr '/' '-')
+          echo "is_pr=$IS_PR"             >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER"     >> "$GITHUB_OUTPUT"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "plan_key=$PLAN_KEY"       >> "$GITHUB_OUTPUT"
+
+          if [ "$IS_PR" = "true" ] || git ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null 2>&1; then
+            git fetch origin "$BRANCH_NAME"
+            git checkout -B "$BRANCH_NAME" "origin/$BRANCH_NAME"
+          else
+            git fetch origin "$DEFAULT_BRANCH"
+            git checkout -B "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+          fi
+
+      - name: Prepara contesto e pulisci prompt
+        run: |
+          API="$GH_API/repos/$REPO"
+          : > /tmp/context.txt
+          if [ "${{ steps.ctx.outputs.is_pr }}" = "true" ]; then
+            PR_NUMBER="${{ steps.ctx.outputs.pr_number }}"
+            echo "== Diff della PR ==" >> /tmp/context.txt
+            curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.diff" "$API/pulls/$PR_NUMBER" >> /tmp/context.txt
+            echo "== Commenti recenti ==" >> /tmp/context.txt
+            curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API/issues/$PR_NUMBER/comments" | jq -r '.[] | "- (\(.user.login)): \(.body)"' >> /tmp/context.txt || true
+          fi
+          printf '%s' "$COMMENT_BODY" | sed -e 's|/opencode||g' -e 's|/oc||g' > /tmp/clean_prompt.txt
+
+      - name: Risolvi modello (Visual / Default / Override)
+        id: model
+        run: |
+          PROMPT_TEXT=$(cat /tmp/clean_prompt.txt)
+          FULL_TEXT="$COMMENT_BODY $ISSUE_BODY $ISSUE_TITLE"
+          RUN_MODEL=""
+          if [[ "$PROMPT_TEXT" =~ (--model|-m|model:)[[:space:]=]*([a-zA-Z0-9_\.\/-]+) ]]; then
+            RUN_MODEL="${BASH_REMATCH[2]}"
+            PROMPT_TEXT=$(echo "$PROMPT_TEXT" | sed -E 's/(--model|-m|model:)[[:space:]=]*[a-zA-Z0-9_\.\/-]+//g')
+            echo "$PROMPT_TEXT" > /tmp/clean_prompt.txt
+          fi
+          HAS_IMAGES=false
+          if echo "$FULL_TEXT" | grep -Eq '(!\[[^]]*\]\([^)]+\)|<img[[:space:]]|github\.com\/user-attachments\/assets|\.(png|jpe?g|gif|webp|bmp))'; then
+            HAS_IMAGES=true
+          fi
+          if [ -n "$RUN_MODEL" ]; then
+            FINAL_MODEL="$RUN_MODEL"
+          elif [ "$HAS_IMAGES" = "true" ]; then
+            FINAL_MODEL="$VISUAL_MODEL"
+          else
+            FINAL_MODEL="$DEFAULT_MODEL"
+          fi
+          if [ -n "$FINAL_MODEL" ] && [[ "$FINAL_MODEL" != *"/"* ]]; then
+            FINAL_MODEL="opencode/$FINAL_MODEL"
+          fi
+          [ -z "$FINAL_MODEL" ] && FINAL_MODEL="opencode/big-pickle"
+          echo "selected_model=$FINAL_MODEL" >> "$GITHUB_OUTPUT"
+
+      - name: Esegui Orchestrazione OpenCode (Plan + Build/Review Loop)
+        id: build_review
+        run: |
+          export BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
+          export PLAN_KEY="${{ steps.ctx.outputs.plan_key }}"
+          export CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
+          export DEFAULT_BRANCH="$DEFAULT_BRANCH"
+          export MAX_ITERATIONS="$MAX_ITERATIONS"
+          chmod +x .opencode/ci/runner.sh
+          bash .opencode/ci/runner.sh
+          VERDICT=$(grep '^VERDICT=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "FAIL")
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+
+      - name: Sincronizza con develop, pusha e apri/aggiorna PR
+        id: push
+        run: |
+          API="$GH_API/repos/$REPO"
+          BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
+          CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
+          git add .
+          git commit -m "OpenCode ($CHOSEN_MODEL): $BRANCH_NAME" || echo "Nessuna nuova modifica."
+
+          git fetch origin "$DEFAULT_BRANCH"
+          HAS_CONFLICT=false
+          if ! git merge "origin/$DEFAULT_BRANCH" --no-edit -m "Merge branch '$DEFAULT_BRANCH' into $BRANCH_NAME"; then
+            echo "⚠️ Conflitti con $DEFAULT_BRANCH. Risoluzione con OpenCode..."
+            opencode run --agent build --auto --model "$CHOSEN_MODEL" "Risolvi i conflitti di merge Git mantenendo le modifiche di entrambi." || true
+            if git diff --check | grep -q "conflict marker"; then
+              git merge --abort || true
+              HAS_CONFLICT=true
+            else
+              git add .
+              git commit -m "OpenCode: risoluzione automatica conflitti con $DEFAULT_BRANCH" || true
+            fi
+          fi
+
+          if git diff --quiet "origin/$DEFAULT_BRANCH..HEAD" 2>/dev/null; then
+            echo "Nessuna differenza rispetto a $DEFAULT_BRANCH."
+            exit 0
+          fi
+
+          git push origin "$BRANCH_NAME"
+
+          if [ "${{ steps.ctx.outputs.is_pr }}" = "true" ]; then
+            PR_NUMBER="${{ steps.ctx.outputs.pr_number }}"
+          else
+            RESP=$(curl -s -X POST "$API/pulls" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"base\": \"$DEFAULT_BRANCH\",
+                \"head\": \"$BRANCH_NAME\",
+                \"title\": \"🤖 OpenCode ($CHOSEN_MODEL): $BRANCH_NAME\",
+                \"body\": \"Generata automaticamente da OpenCode ($CHOSEN_MODEL) su richiesta di @$COMMENT_AUTHOR.\n\nPiano: \`issue_plans/${{ steps.ctx.outputs.plan_key }}.md\`\n\nCloses #$ISSUE_NUMBER\"
+              }")
+            PR_NUMBER=$(echo "$RESP" | jq -r '.number // empty')
+            if [ -z "$PR_NUMBER" ]; then
+              PR_NUMBER=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/pulls?state=open&per_page=50" | jq -r --arg b "$BRANCH_NAME" '.[] | select(.head.ref==$b) | .number' | head -n1)
+            fi
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "has_conflict=$HAS_CONFLICT" >> "$GITHUB_OUTPUT"
+
+      - name: Auto-merge PR su develop e chiusura Issue
+        if: steps.build_review.outputs.verdict == 'PASS' && steps.push.outputs.has_conflict != 'true'
+        run: |
+          API="$GH_API/repos/$REPO"
+          PR_NUMBER="${{ steps.push.outputs.pr_number }}"
+          [ -z "$PR_NUMBER" ] && PR_NUMBER="${{ steps.ctx.outputs.pr_number }}"
+          if [ -z "$PR_NUMBER" ]; then exit 0; fi
+
+          echo "🔀 Auto-merge PR #$PR_NUMBER su $DEFAULT_BRANCH..."
+          for attempt in $(seq 1 12); do
+            MERGEABLE=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/pulls/$PR_NUMBER" | jq -r '.mergeable // "null"')
+            [ "$MERGEABLE" = "true" ] && break
+            [ "$MERGEABLE" = "false" ] && { echo "Conflitti non risolvibili automaticamente."; exit 0; }
+            sleep 5
+          done
+
+          MERGE_RESP=$(curl -s -X PUT "$API/pulls/$PR_NUMBER/merge" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"commit_title\": \"🤖 OpenCode merge: ${{ steps.ctx.outputs.branch_name }} (#$PR_NUMBER)\",
+              \"commit_message\": \"Merge automatico da OpenCode dopo VERDICT: PASS.\nCloses #$ISSUE_NUMBER\",
+              \"merge_method\": \"squash\"
+            }")
+
+          if [ "$(echo "$MERGE_RESP" | jq -r '.merged // false')" = "true" ]; then
+            echo "✅ PR mergiata con successo su $DEFAULT_BRANCH."
+            if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$PR_NUMBER" ]; then
+              curl -s -X PATCH "$API/issues/$ISSUE_NUMBER" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"state":"closed","state_reason":"completed"}' > /dev/null || true
+            fi
+          fi
+
+      - name: Salvataggio progressi su timeout o cancellazione
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          API="$GH_API/repos/$REPO"
+          BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
+          CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
+          git add .
+          git commit -m "OpenCode ($CHOSEN_MODEL): checkpoint emergenza (timeout/cancellazione)" || true
+          git push origin "$BRANCH_NAME" || true
+          TARGET_ISSUE="$ISSUE_NUMBER"
+          [ -z "$TARGET_ISSUE" ] && TARGET_ISSUE="${{ steps.ctx.outputs.pr_number }}"
+          if [ -n "$TARGET_ISSUE" ]; then
+            MSG="⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta.
+
+            I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:
+            \`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`"
+            JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
+            curl -s -X POST "$API/issues/$TARGET_ISSUE/comments" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$JSON_BODY" > /dev/null || true
+          fi
