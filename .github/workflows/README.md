@@ -21,21 +21,24 @@ flowchart TD
 
     React --> Checkout["Checkout branch origin/develop"]
     Checkout --> SetupEnv["Pre-pull Docker cauan/theos & CLI"]
-    SetupEnv --> TriagePhase["🔎 FASE 0: TRIAGE & DEDUP (Agente triage)"]
+    React --> Checkout["Checkout branch origin/develop"]
+    Checkout --> SetupEnv["Pre-pull Docker cauan/theos & CLI"]
+    SetupEnv --> PlanPhase["📝 FASE 1: PLAN, DEDUP & STATE TRACKING (Agente planner)"]
 
-    TriagePhase --> TriageEval{"Esito Triage?"}
-    TriageEval -- "ALREADY_IMPLEMENTED" --> TriageDone["Commento: Già implementato nel codice<br/>File e righe citati. Nessun commit. Stop"]
-    TriageEval -- "DUPLICATE (#X)" --> TriageDup["Etichetta 'duplicate' + Commento riferimento. Stop"]
-    TriageEval -- "PROCEED" --> PlanPhase["📝 FASE 1: PLAN (Agente planner)"]
+    PlanPhase --> PlanCheck{"Valutazione Stato & Acceptance Criteria"}
+    PlanCheck -- "DUPLICATE (#X)" --> TriageDup["Etichetta 'duplicate' + Commento riferimento. Stop"]
+    PlanCheck -- "ALREADY_DONE" --> TriageDone["Commento: Già implementato nel codice. Stop"]
+    PlanCheck -- "ALL_COMPLETED / Skip Build<br/>(Tutti i criteri - [x] o comando release)" --> VerifyDone["⚙️ Verifica Build Theos Docker (armv7)<br/>VERDICT: PASS (Salta Build!)"]
+    PlanCheck -- "IN_PROGRESS<br/>(Task residui - [ ])" --> LoopBuildReview
 
-    PlanPhase --> PlanFile["Genera e committa issue_plans/xxx.md"]
-    PlanFile --> LoopBuildReview
+    VerifyDone --> MergeStep
 
-    subgraph LoopBuildReview["Loop Build & Review (Max 4 Iterazioni)"]
+    subgraph LoopBuildReview["Fase 2: Loop Build & Review (Max 4 Iterazioni)"]
         direction TB
-        BuildAgent["🔨 FASE 2: BUILD (Agente build)<br/>Modifica codice ObjC / Android"] --> TheosDocker["⚙️ Verifica Build Theos Docker (armv7)<br/>docker run cauan/theos make all"]
-        TheosDocker --> ReviewAgent["🔍 FASE 3: REVIEW (Agente reviewer)<br/>Valida Acceptance Criteria & iOS 9.3"]
-        ReviewAgent --> VerdictCheck{"VERDICT?"}
+        BuildAgent["🔨 BUILD (Agente build)<br/>Implementa task non spuntati - [ ]"] --> TheosDocker["⚙️ Verifica Compilazione Theos / Gradle"]
+        TheosDocker --> ReviewAgent["🔍 REVIEW (Agente reviewer)<br/>Valida Acceptance Criteria & aggiorna spunte - [x]"]
+        ReviewAgent --> CheckpointCommit["💾 Checkpoint Commit & Push su branch"]
+        CheckpointCommit --> VerdictCheck{"VERDICT?"}
         VerdictCheck -- "FAIL" --> FeedbackLoop["Passa feedback all'iterazione successiva"]
         FeedbackLoop --> BuildAgent
     end
@@ -62,18 +65,23 @@ flowchart TD
 - **Concurrency Lock**: Tramite `concurrency: group: opencode-${{ issue.number }}`, commenti multipli o simultanei sulla stessa issue non creano conflitti git: le esecuzioni vengono accodate in modo ordinato.
 - **Fast Exit**: Se un'issue è già etichettata `duplicate`, `invalid` o `wontfix`, o se è già `closed` (senza istruzione di riapertura), il workflow si arresta immediatamente senza sprecare minuti di runner.
 
-### 2. Triage & Deduplicazione Intelligente
-L'agente [`.opencode/agents/triage.md`](file:///home/nicola/Devel/retrofit/iOS/NavigatoreOSM/.opencode/agents/triage.md) analizza il codebase attuale su `develop` e le issue recenti:
-- **`ALREADY_IMPLEMENTED`**: Rileva se il problema segnalato o la feature richiesta è **già presente** ed effettiva nel codice. Riporta i file e le righe a supporto, commenta sull'issue e termina senza toccare il codice né sporcare la git history.
-- **`DUPLICATE`**: Se la segnalazione duplica un'altra issue aperta/recente, applica la label `duplicate`, cita l'issue originale e arresta l'elaborazione.
-- **`PROCEED`**: Solo se c'è effettivo lavoro da svolgere, autorizza il passaggio alla pianificazione.
+### 2. Fase 1: Plan, Deduplicazione & Macchina a Stati (Separata da Build)
+L'agente [`.opencode/agents/planner.md`](file:///home/nicola/Devel/retrofit/iOS/NavigatoreOSM/.opencode/agents/planner.md) agisce come macchina a stati persistente:
+- **Salvataggio in `issue_plans/`**: I piani vengono tracciati e versionati in `issue_plans/<plan_key>.md`.
+- **Riconoscimento dello stato e ripresa (Resume)**:
+  - Se il piano esiste già (es. da una run precedente interrotta), il planner ispeziona il codice effettivo e aggiorna le spunte: `- [x]` per i criteri già soddisfatti, `- [ ]` per quelli mancanti.
+  - Se tutti i criteri sono già soddisfatti (`- [x]`) o se l'utente richiede esplicitamente la pubblicazione/rilascio (`/oc procedi con la pubblicazione`):
+    emette `PLAN_STATUS: ALL_COMPLETED`, valida la compilazione Theos (`VERDICT: PASS`) e **salta completamente la Fase 2 di Build**, procedendo direttamente al merge e release!
+  - Se il flusso era stato interrotto, riprende l'esecuzione solo dai task non ancora completati (`- [ ]`).
+- **Deduplicazione & Already Done**:
+  - `ALREADY_DONE`: La feature è già presente nel branch base.
+  - `DUPLICATE`: La richiesta è un duplicato di un'altra issue.
 
-### 3. Pianificazione (Plan)
-L'agente [`.opencode/agents/planner.md`](file:///home/nicola/Devel/retrofit/iOS/NavigatoreOSM/.opencode/agents/planner.md) produce un piano markdown in `issue_plans/` contenente:
-- Obiettivo;
-- Elenco task atomici con file coinvolti;
-- Acceptance criteria oggettivi (inclusa compatibilità iOS 9.3.5 / chip Apple A5 512 MB RAM e divieto di API iOS 10+);
-- Comandi di verifica build.
+### 3. Fase 2: Build & Review Loop
+Viene eseguita solo se `PLAN_STATUS == 'IN_PROGRESS'`:
+- **Build**: Implementa unicamente i task contrassegnati con `- [ ]`.
+- **Review**: Verifica compilazione Theos (iOS armv7) e Android (GPSTether), aggiorna progressivamente le spunte `- [x]` nel file del piano ed emette `VERDICT: PASS` o `FAIL`.
+- **Checkpoint & Persistenza**: Ad ogni iterazione, il codice e il piano aggiornato vengono committati e pushati sul branch remoto. In caso di timeout o cancellazione accidentale, lo stato è preservato.
 
 ### 4. Build & Review Loop
 - **Build**: Implementa le modifiche sui file di codice (Objective-C per iOS o Java/Kotlin per il companion Android `android/`).

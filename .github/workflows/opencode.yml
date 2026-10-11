@@ -223,8 +223,9 @@ jobs:
           [ -z "$FINAL_MODEL" ] && FINAL_MODEL="opencode/big-pickle"
           echo "selected_model=$FINAL_MODEL" >> "$GITHUB_OUTPUT"
 
-      - name: Esegui Orchestrazione OpenCode (Triage + Plan + Build/Review Loop)
-        id: build_review
+      # ── 6. Fase 1: PLAN, STATO & DEDUP ──────────────────────────────────────
+      - name: "Fase 1 — Plan & Progress Assessment (Analisi dello stato e deduplicazione)"
+        id: plan
         run: |
           export BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
           export PLAN_KEY="${{ steps.ctx.outputs.plan_key }}"
@@ -232,18 +233,20 @@ jobs:
           export DEFAULT_BRANCH="$DEFAULT_BRANCH"
           export MAX_ITERATIONS="$MAX_ITERATIONS"
           chmod +x .opencode/ci/runner.sh
-          bash .opencode/ci/runner.sh
+          bash .opencode/ci/runner.sh plan
+          PLAN_STATUS=$(grep '^PLAN_STATUS=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "IN_PROGRESS")
           VERDICT=$(grep '^VERDICT=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "FAIL")
+          echo "plan_status=$PLAN_STATUS" >> "$GITHUB_OUTPUT"
           echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
 
       - name: Gestisci esito Triage (Già implementato o Duplicato)
-        if: steps.build_review.outputs.verdict == 'ALREADY_DONE' || steps.build_review.outputs.verdict == 'DUPLICATE'
+        if: steps.plan.outputs.plan_status == 'ALREADY_DONE' || steps.plan.outputs.plan_status == 'DUPLICATE'
         run: |
           API="$GH_API/repos/$REPO"
-          VERDICT="${{ steps.build_review.outputs.verdict }}"
+          STATUS="${{ steps.plan.outputs.plan_status }}"
           REASON=$(cat /tmp/triage_reason.txt 2>/dev/null || echo "Nessun dettaglio fornito dal triage.")
 
-          if [ "$VERDICT" = "ALREADY_DONE" ]; then
+          if [ "$STATUS" = "ALREADY_DONE" ]; then
             if [ -n "$ISSUE_NUMBER" ]; then
               MSG=$(printf '%s\n\n```\n%s\n```\n\n%s' \
                 "🔍 **Triage OpenCode: Funzionalità o correzione già presente!**" \
@@ -256,7 +259,7 @@ jobs:
                 -d "$JSON_BODY" > /dev/null || true
             fi
             echo "✅ Concluso: la richiesta risulta già implementata."
-          elif [ "$VERDICT" = "DUPLICATE" ]; then
+          elif [ "$STATUS" = "DUPLICATE" ]; then
             if [ -n "$ISSUE_NUMBER" ]; then
               curl -s -X POST "$API/issues/$ISSUE_NUMBER/labels" \
                 -H "Authorization: Bearer $GH_TOKEN" \
@@ -276,9 +279,24 @@ jobs:
             echo "⚠️ Concluso: la richiesta è stata classificata come duplicato."
           fi
 
+      # ── 7. Fase 2: BUILD + REVIEW loop ──────────────────────────────────────
+      - name: "Fase 2 — Build & Review loop (solo se in progress)"
+        id: build_review
+        if: steps.plan.outputs.plan_status == 'IN_PROGRESS'
+        run: |
+          export BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
+          export PLAN_KEY="${{ steps.ctx.outputs.plan_key }}"
+          export CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
+          export DEFAULT_BRANCH="$DEFAULT_BRANCH"
+          export MAX_ITERATIONS="$MAX_ITERATIONS"
+          chmod +x .opencode/ci/runner.sh
+          bash .opencode/ci/runner.sh build
+          VERDICT=$(grep '^VERDICT=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "FAIL")
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+
       - name: Sincronizza con develop, pusha e apri/aggiorna PR
         id: push
-        if: steps.build_review.outputs.verdict != 'ALREADY_DONE' && steps.build_review.outputs.verdict != 'DUPLICATE'
+        if: steps.plan.outputs.plan_status != 'ALREADY_DONE' && steps.plan.outputs.plan_status != 'DUPLICATE'
         run: |
           API="$GH_API/repos/$REPO"
           BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
@@ -336,7 +354,7 @@ jobs:
 
       - name: Auto-merge PR su develop e chiusura Issue
         id: merge
-        if: steps.build_review.outputs.verdict == 'PASS' && steps.push.outputs.has_conflict != 'true'
+        if: (steps.plan.outputs.verdict == 'PASS' || steps.build_review.outputs.verdict == 'PASS') && steps.push.outputs.has_conflict != 'true'
         run: |
           API="$GH_API/repos/$REPO"
           PR_NUMBER="${{ steps.push.outputs.pr_number }}"
@@ -476,6 +494,28 @@ jobs:
               -d "$JSON_BODY" > /dev/null || true
           fi
 
+      # ── 11. Commento di review sulla PR / Issue ──────────────────────────────
+      - name: Posta commento di review sulla PR o Issue
+        if: always()
+        continue-on-error: true
+        run: |
+          API="$GH_API/repos/$REPO"
+          PR_NUMBER="${{ steps.push.outputs.pr_number }}"
+          [ -z "$PR_NUMBER" ] && PR_NUMBER="${{ steps.ctx.outputs.pr_number }}"
+          TARGET_ID="$PR_NUMBER"
+          [ -z "$TARGET_ID" ] && TARGET_ID="$ISSUE_NUMBER"
+          if [ -z "$TARGET_ID" ] || [ ! -s /tmp/review.txt ]; then
+            echo "Nessun commento di review da postare."
+            exit 0
+          fi
+          BODY=$(jq -Rs . < /tmp/review.txt)
+          curl -s -X POST "$API/issues/$TARGET_ID/comments" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "{\"body\":$BODY}" > /dev/null || true
+
+      # ── 12. Salvataggio di emergenza su timeout / cancellazione ───────────────
       - name: Salvataggio progressi su timeout o cancellazione
         if: cancelled()
         continue-on-error: true
@@ -499,3 +539,24 @@ jobs:
               -H "Content-Type: application/json" \
               -d "$JSON_BODY" > /dev/null || true
           fi
+
+      # ── 13. Reazioni finali ──────────────────────────────────────────────────
+      - name: Reazione finale 🚀
+        if: success() && steps.react.outputs.path != ''
+        continue-on-error: true
+        run: |
+          curl -s -X POST "$GH_API/repos/$REPO/${{ steps.react.outputs.path }}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"rocket"}' > /dev/null || true
+
+      - name: Reazione in caso di errore 😕
+        if: failure() && steps.react.outputs.path != ''
+        continue-on-error: true
+        run: |
+          curl -s -X POST "$GH_API/repos/$REPO/${{ steps.react.outputs.path }}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"confused"}' > /dev/null || true
