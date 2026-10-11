@@ -147,7 +147,15 @@ static NSArray *POICategoriesDefinition(void) {
     NSString *query = objc_getAssociatedObject(sender, "poi_query");
     NSString *key = objc_getAssociatedObject(sender, "poi_key");
     NSString *def = objc_getAssociatedObject(sender, "poi_def");
-    NSString *name = (key && def) ? NLString(key, def) : objc_getAssociatedObject(sender, "poi_name");
+    NSString *name;
+    if ([query isEqualToString:@"fuel"]) {
+        // La categoria carburante deve riflettere il filtro attualmente selezionato
+        // (Benzina/Diesel/GPL/Metano/Elettrico), non l'etichetta generica "Benzina".
+        FuelType curFuel = [FuelPriceService sharedService].selectedFuelType;
+        name = [[FuelPriceService sharedService] nameForFuelType:curFuel];
+    } else {
+        name = (key && def) ? NLString(key, def) : objc_getAssociatedObject(sender, "poi_name");
+    }
 
     if ([self.delegate respondsToSelector:@selector(quickPOIShelfView:didRequestSearchCategory:categoryName:)]) {
         [self.delegate quickPOIShelfView:self didRequestSearchCategory:query categoryName:name];
