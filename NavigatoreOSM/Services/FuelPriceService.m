@@ -462,6 +462,31 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
     int clampedRadius = (radiusKm < 3) ? 3 : ((radiusKm > 30) ? 30 : radiusKm);
 
+    // L'API MIMIT (Prezzi Benzina) non espone le colonnine di ricarica elettrica.
+    // Quando il filtro attivo è "Elettrico" interroghiamo direttamente Overpass OSM
+    // (amenity=charging_station / fuel:electricity / fuel:electric) per ottenere
+    // risultati reali, evitando di mostrare sempre una lista vuota.
+    if (self.selectedFuelType == FuelTypeElectric) {
+        [self fetchOverpassStationsAroundCoordinate:target radiusKm:clampedRadius completion:completion];
+        return;
+    }
+
+    [self fetchMIMITStationsAroundCoordinate:target radiusKm:clampedRadius completion:completion];
+}
+
+#pragma mark - API MIMIT (Prezzi Benzina)
+
+- (void)fetchMIMITStationsAroundCoordinate:(CLLocationCoordinate2D)coordinate
+                                  radiusKm:(int)radiusKm
+                                completion:(void (^)(NSArray<FuelStation *> *stations, NSError *error))completion {
+
+    CLLocationCoordinate2D target = coordinate;
+    if (!CLLocationCoordinate2DIsValid(target) || (fabs(target.latitude) < 0.1 && fabs(target.longitude) < 0.1)) {
+        target = CLLocationCoordinate2DMake(45.4642, 9.1900); // Default Milano centro
+    }
+
+    int clampedRadius = (radiusKm < 3) ? 3 : ((radiusKm > 30) ? 30 : radiusKm);
+
     NSURL *url = [NSURL URLWithString:@"https://carburanti.mise.gov.it/ospzApi/search/zone"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"POST";
@@ -874,7 +899,9 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
 - (void)fetchOnlinePricesAroundCoordinate:(CLLocationCoordinate2D)coordinate
                                completion:(void (^)(BOOL success, NSString *statusMessage))completion {
-    [self fetchStationsAroundCoordinate:coordinate radiusKm:15 completion:^(NSArray<FuelStation *> *stations, NSError *error) {
+    // Aggiorna sempre le medie MIMIT Benzina/Diesel/GPL, indipendentemente
+    // dal tipo di carburante attualmente selezionato nel filtro (es. Elettrico).
+    [self fetchMIMITStationsAroundCoordinate:coordinate radiusKm:15 completion:^(NSArray<FuelStation *> *stations, NSError *error) {
         if (error || stations.count == 0) {
             if (completion) completion(NO, error.localizedDescription ?: @"Nessun distributore trovato in zona");
             return;
