@@ -4,6 +4,29 @@
 
 NSString *const kFuelPricesUpdatedNotification = @"FuelPricesUpdatedNotification";
 
+const NSInteger kFuelTypeCount = 5;
+
+#pragma mark - Maschere Carburante
+
+static inline NSUInteger FuelMaskForType(FuelType type) {
+    return (NSUInteger)(1UL << (NSUInteger)type);
+}
+
+static inline NSUInteger FuelDefaultMask(void) {
+    return FuelMaskForType(FuelTypePetrol) | FuelMaskForType(FuelTypeDiesel);
+}
+
+/// Interpreta un tag OSM come "vero" (yes, true, 1, ...). "no"/"none"/vuoto => NO.
+static BOOL OSMTagIsPositive(id value) {
+    if (![value isKindOfClass:[NSString class]]) return (value != nil);
+    NSString *v = [(NSString *)value lowercaseString];
+    if (v.length == 0) return NO;
+    if ([v isEqualToString:@"no"] || [v isEqualToString:@"none"] || [v isEqualToString:@"false"] || [v isEqualToString:@"0"]) {
+        return NO;
+    }
+    return YES;
+}
+
 static NSString *const kPrefFuelType = @"FuelTypePreference";
 static NSString *const kPrefCustomConsumptionPrefix = @"FuelCustomConsumption_";
 static NSString *const kPrefCustomPricePrefix = @"FuelCustomPrice_";
@@ -33,6 +56,7 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
     [coder encodeDouble:self.methanePrice forKey:@"methane"];
     [coder encodeDouble:self.distanceFromQuery forKey:@"dist"];
     [coder encodeObject:self.lastUpdated forKey:@"date"];
+    [coder encodeInteger:(NSInteger)self.availableFuelTypeMask forKey:@"fuelMask"];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
@@ -53,8 +77,72 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
         _methanePrice = [coder decodeDoubleForKey:@"methane"];
         _distanceFromQuery = [coder decodeDoubleForKey:@"dist"];
         _lastUpdated = [coder decodeObjectOfClass:[NSDate class] forKey:@"date"];
+        _availableFuelTypeMask = (NSUInteger)[coder decodeIntegerForKey:@"fuelMask"];
     }
     return self;
+}
+
+#pragma mark - Disponibilità Carburanti
+
+- (NSUInteger)resolvedFuelTypeMask {
+    if (self.availableFuelTypeMask != 0) {
+        return self.availableFuelTypeMask;
+    }
+    // Disponibilità sconosciuta: per compatibilità si assume Benzina + Diesel.
+    return FuelDefaultMask();
+}
+
+- (BOOL)hasFuelType:(FuelType)type {
+    return ([self resolvedFuelTypeMask] & FuelMaskForType(type)) != 0;
+}
+
+- (FuelType)primaryAvailableFuelType {
+    NSUInteger mask = [self resolvedFuelTypeMask];
+    static const FuelType order[] = {
+        FuelTypePetrol, FuelTypeDiesel, FuelTypeLPG, FuelTypeMethane, FuelTypeElectric
+    };
+    for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
+        if (mask & FuelMaskForType(order[i])) {
+            return order[i];
+        }
+    }
+    return FuelTypePetrol;
+}
+
+- (NSArray<NSNumber *> *)availableFuelTypes {
+    NSUInteger mask = [self resolvedFuelTypeMask];
+    static const FuelType order[] = {
+        FuelTypePetrol, FuelTypeDiesel, FuelTypeLPG, FuelTypeMethane, FuelTypeElectric
+    };
+    NSMutableArray<NSNumber *> *list = [NSMutableArray array];
+    for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
+        if (mask & FuelMaskForType(order[i])) {
+            [list addObject:@(order[i])];
+        }
+    }
+    return list;
+}
+
+- (NSString *)availableFuelBadgeString {
+    NSArray<NSNumber *> *types = [self availableFuelTypes];
+    NSMutableArray<NSString *> *codes = [NSMutableArray arrayWithCapacity:types.count];
+    for (NSNumber *n in types) {
+        [codes addObject:[[FuelPriceService sharedService] shortNameForFuelType:(FuelType)n.integerValue]];
+    }
+    if (codes.count == 0) {
+        return @"Carburante";
+    }
+    return [codes componentsJoinedByString:@" "];
+}
+
+- (NSString *)markerGlyphString {
+    NSUInteger mask = [self resolvedFuelTypeMask];
+    NSUInteger liquid = FuelMaskForType(FuelTypePetrol) | FuelMaskForType(FuelTypeDiesel) |
+                        FuelMaskForType(FuelTypeLPG) | FuelMaskForType(FuelTypeMethane);
+    if ((mask & FuelMaskForType(FuelTypeElectric)) && (mask & liquid) == 0) {
+        return @"⚡";
+    }
+    return @"⛽";
 }
 
 - (double)effectivePriceForFuelType:(FuelType)type {
@@ -65,6 +153,8 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
             return (self.dieselPriceSelf > 0.1) ? self.dieselPriceSelf : self.dieselPriceServed;
         case FuelTypeLPG:
             return self.lpgPrice;
+        case FuelTypeMethane:
+            return self.methanePrice;
         case FuelTypeElectric:
             return 0.0;
     }
@@ -72,60 +162,36 @@ static NSString *const kPrefOnlineFetchDate = @"FuelOnlineFetchTimestamp";
 }
 
 - (NSString *)displayTitleForFuelType:(FuelType)type {
-    double p = [self effectivePriceForFuelType:type];
     NSString *bName = (self.brand && [self.brand isKindOfClass:[NSString class]] && self.brand.length > 0)
         ? self.brand
         : ((self.name && [self.name isKindOfClass:[NSString class]]) ? self.name : @"Distributore");
-    NSString *fName = [[FuelPriceService sharedService] nameForFuelType:type];
+    NSString *badges = [self availableFuelBadgeString];
+    double p = [self effectivePriceForFuelType:type];
     if (p > 0.1) {
-        return [NSString stringWithFormat:@"⛽ %@ • %@: %.3f €", bName, fName, p];
+        return [NSString stringWithFormat:@"%@ %@ • %@ %.2f€", [self markerGlyphString], bName, badges, p];
     }
-    return [NSString stringWithFormat:@"⛽ %@ (%@)", bName, fName];
+    return [NSString stringWithFormat:@"%@ %@ • %@", [self markerGlyphString], bName, badges];
 }
 
 - (NSString *)formattedSubtitle {
-    return [self formattedSubtitleForFuelType:FuelTypePetrol];
+    return [self formattedSubtitleForFuelType:[self primaryAvailableFuelType]];
 }
 
 - (NSString *)formattedSubtitleForFuelType:(FuelType)type {
+    (void)type; // La disponibilità è determinata dai tag della stazione, non dal filtro.
     NSMutableArray *parts = [NSMutableArray array];
 
-    // Selezionato per primo
-    if (type == FuelTypeDiesel) {
-        if (self.dieselPriceSelf > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"✓ Diesel: %.3f€", self.dieselPriceSelf]];
-        } else if (self.dieselPriceServed > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"✓ Diesel (serv.): %.3f€", self.dieselPriceServed]];
+    // Elenca i carburanti effettivamente disponibili, in ordine deterministico,
+    // indipendentemente dal filtro attualmente selezionato nella UI.
+    for (NSNumber *n in [self availableFuelTypes]) {
+        FuelType t = (FuelType)n.integerValue;
+        NSString *nm = [[FuelPriceService sharedService] nameForFuelType:t];
+        double p = [self effectivePriceForFuelType:t];
+        if (p > 0.1) {
+            [parts addObject:[NSString stringWithFormat:@"%@: %.3f€", nm, p]];
+        } else {
+            [parts addObject:nm];
         }
-    } else if (type == FuelTypeLPG) {
-        if (self.lpgPrice > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"✓ GPL: %.3f€", self.lpgPrice]];
-        }
-    } else {
-        if (self.petrolPriceSelf > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"✓ Benzina: %.3f€", self.petrolPriceSelf]];
-        } else if (self.petrolPriceServed > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"✓ Benzina (serv.): %.3f€", self.petrolPriceServed]];
-        }
-    }
-
-    // Altri carburanti
-    if (type != FuelTypePetrol) {
-        if (self.petrolPriceSelf > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"Benzina: %.3f€", self.petrolPriceSelf]];
-        } else if (self.petrolPriceServed > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"Benzina (serv.): %.3f€", self.petrolPriceServed]];
-        }
-    }
-    if (type != FuelTypeDiesel) {
-        if (self.dieselPriceSelf > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"Diesel: %.3f€", self.dieselPriceSelf]];
-        } else if (self.dieselPriceServed > 0.1) {
-            [parts addObject:[NSString stringWithFormat:@"Diesel (serv.): %.3f€", self.dieselPriceServed]];
-        }
-    }
-    if (type != FuelTypeLPG && self.lpgPrice > 0.1) {
-        [parts addObject:[NSString stringWithFormat:@"GPL: %.3f€", self.lpgPrice]];
     }
 
     if (self.address && [self.address isKindOfClass:[NSString class]] && self.address.length > 0) {
@@ -244,7 +310,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
 - (FuelType)selectedFuelType {
     NSInteger val = [[NSUserDefaults standardUserDefaults] integerForKey:kPrefFuelType];
-    if (val < 0 || val > 3) return FuelTypePetrol;
+    if (val < 0 || val >= kFuelTypeCount) return FuelTypePetrol;
     return (FuelType)val;
 }
 
@@ -261,16 +327,32 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         case FuelTypeDiesel:   return isIt ? @"Diesel (Gasolio)" : @"Diesel";
         case FuelTypeLPG:      return @"GPL";
         case FuelTypeElectric: return isIt ? @"Elettrico" : @"Electric";
+        case FuelTypeMethane:  return isIt ? @"Metano" : @"CNG";
     }
     return @"Carburante";
 }
 
+- (NSString *)shortNameForFuelType:(FuelType)type {
+    switch (type) {
+        case FuelTypePetrol:   return @"B";
+        case FuelTypeDiesel:   return @"D";
+        case FuelTypeLPG:      return @"GPL";
+        case FuelTypeElectric: return @"⚡";
+        case FuelTypeMethane:  return @"MET";
+    }
+    return @"?";
+}
+
 - (NSString *)unitForFuelType:(FuelType)type {
-    return (type == FuelTypeElectric) ? @"kWh" : @"L";
+    if (type == FuelTypeElectric) return @"kWh";
+    if (type == FuelTypeMethane) return @"kg";
+    return @"L";
 }
 
 - (NSString *)consumptionUnitForFuelType:(FuelType)type {
-    return (type == FuelTypeElectric) ? @"kWh/100km" : @"L/100km";
+    if (type == FuelTypeElectric) return @"kWh/100km";
+    if (type == FuelTypeMethane) return @"kg/100km";
+    return @"L/100km";
 }
 
 #pragma mark - Consumi
@@ -281,6 +363,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         case FuelTypeDiesel:   return 5.2;  // 5.2 L / 100km
         case FuelTypeLPG:      return 8.2;  // 8.2 L / 100km
         case FuelTypeElectric: return 16.0; // 16.0 kWh / 100km
+        case FuelTypeMethane:  return 4.0;  // 4.0 kg / 100km
     }
     return 6.5;
 }
@@ -318,6 +401,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         case FuelTypeDiesel:   return 1.719; // ~1.72 €/L
         case FuelTypeLPG:      return 0.729; // ~0.73 €/L
         case FuelTypeElectric: return 0.450; // ~0.45 €/kWh
+        case FuelTypeMethane:  return 1.299; // ~1.30 €/kg
     }
     return 1.800;
 }
@@ -378,6 +462,31 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
     int clampedRadius = (radiusKm < 3) ? 3 : ((radiusKm > 30) ? 30 : radiusKm);
 
+    // L'API MIMIT (Prezzi Benzina) non espone le colonnine di ricarica elettrica.
+    // Quando il filtro attivo è "Elettrico" interroghiamo direttamente Overpass OSM
+    // (amenity=charging_station / fuel:electricity / fuel:electric) per ottenere
+    // risultati reali, evitando di mostrare sempre una lista vuota.
+    if (self.selectedFuelType == FuelTypeElectric) {
+        [self fetchOverpassStationsAroundCoordinate:target radiusKm:clampedRadius completion:completion];
+        return;
+    }
+
+    [self fetchMIMITStationsAroundCoordinate:target radiusKm:clampedRadius completion:completion];
+}
+
+#pragma mark - API MIMIT (Prezzi Benzina)
+
+- (void)fetchMIMITStationsAroundCoordinate:(CLLocationCoordinate2D)coordinate
+                                  radiusKm:(int)radiusKm
+                                completion:(void (^)(NSArray<FuelStation *> *stations, NSError *error))completion {
+
+    CLLocationCoordinate2D target = coordinate;
+    if (!CLLocationCoordinate2DIsValid(target) || (fabs(target.latitude) < 0.1 && fabs(target.longitude) < 0.1)) {
+        target = CLLocationCoordinate2DMake(45.4642, 9.1900); // Default Milano centro
+    }
+
+    int clampedRadius = (radiusKm < 3) ? 3 : ((radiusKm > 30) ? 30 : radiusKm);
+
     NSURL *url = [NSURL URLWithString:@"https://carburanti.mise.gov.it/ospzApi/search/zone"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"POST";
@@ -426,6 +535,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         NSMutableArray<NSNumber *> *dieselSelf = [NSMutableArray array];
         NSMutableArray<NSNumber *> *dieselAll = [NSMutableArray array];
         NSMutableArray<NSNumber *> *lpgPrices = [NSMutableArray array];
+        NSMutableArray<NSNumber *> *methanePrices = [NSMutableArray array];
 
         for (NSDictionary *st in results) {
             NSDictionary *loc = st[@"location"];
@@ -444,6 +554,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
             station.distanceFromQuery = [st[@"distance"] doubleValue];
             station.lastUpdated = [NSDate date];
 
+            NSUInteger fuelMask = 0;
             NSArray *fuels = st[@"fuels"];
             if ([fuels isKindOfClass:[NSArray class]]) {
                 for (NSDictionary *f in fuels) {
@@ -456,6 +567,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
                     BOOL isSelf = [f[@"isSelf"] boolValue];
 
                     if ([fuelName containsString:@"benzina"] && ![fuelName containsString:@"speciale"] && ![fuelName containsString:@"100"]) {
+                        fuelMask |= FuelMaskForType(FuelTypePetrol);
                         [petrolAll addObject:@(price)];
                         if (isSelf) {
                             [petrolSelf addObject:@(price)];
@@ -468,6 +580,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
                             }
                         }
                     } else if ([fuelName containsString:@"gasolio"] || [fuelName containsString:@"diesel"]) {
+                        fuelMask |= FuelMaskForType(FuelTypeDiesel);
                         [dieselAll addObject:@(price)];
                         if (isSelf) {
                             [dieselSelf addObject:@(price)];
@@ -479,19 +592,25 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
                                 station.dieselPriceServed = price;
                             }
                         }
-                    } else if ([fuelName containsString:@"gpl"]) {
+                    } else if ([fuelName containsString:@"gpl"] || [fuelName containsString:@"autogas"]) {
+                        fuelMask |= FuelMaskForType(FuelTypeLPG);
                         [lpgPrices addObject:@(price)];
                         if (station.lpgPrice <= 0 || price < station.lpgPrice) {
                             station.lpgPrice = price;
                         }
-                    } else if ([fuelName containsString:@"metano"]) {
+                    } else if ([fuelName containsString:@"metano"] || [fuelName containsString:@"cng"]) {
+                        fuelMask |= FuelMaskForType(FuelTypeMethane);
+                        [methanePrices addObject:@(price)];
                         if (station.methanePrice <= 0 || price < station.methanePrice) {
                             station.methanePrice = price;
                         }
+                    } else if ([fuelName containsString:@"elettric"] || [fuelName containsString:@"ricarica"] || [fuelName containsString:@"electric"]) {
+                        fuelMask |= FuelMaskForType(FuelTypeElectric);
                     }
                 }
             }
 
+            station.availableFuelTypeMask = fuelMask;
             [stationList addObject:station];
         }
 
@@ -506,6 +625,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         double avgPetrol = (petrolSelf.count > 0) ? calcAvg(petrolSelf) : calcAvg(petrolAll);
         double avgDiesel = (dieselSelf.count > 0) ? calcAvg(dieselSelf) : calcAvg(dieselAll);
         double avgLPG = calcAvg(lpgPrices);
+        double avgMethane = calcAvg(methanePrices);
 
         if (avgPetrol > 0.5) {
             [[NSUserDefaults standardUserDefaults] setDouble:avgPetrol
@@ -518,6 +638,10 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         if (avgLPG > 0.3) {
             [[NSUserDefaults standardUserDefaults] setDouble:avgLPG
                                                       forKey:[NSString stringWithFormat:@"%@%ld", kPrefOnlinePricePrefix, (long)FuelTypeLPG]];
+        }
+        if (avgMethane > 0.3) {
+            [[NSUserDefaults standardUserDefaults] setDouble:avgMethane
+                                                      forKey:[NSString stringWithFormat:@"%@%ld", kPrefOnlinePricePrefix, (long)FuelTypeMethane]];
         }
 
         [[NSUserDefaults standardUserDefaults] setObject:[NSDate date] forKey:kPrefOnlineFetchDate];
@@ -534,8 +658,8 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
             weakSelf.cachedStations = [dict allValues];
             [weakSelf saveCachedStationsToDisk];
 
-            NSLog(@"[FuelPriceService] MIMIT aggiornato: %lu distributori caricati. Medie: Benzina=%.3f, Diesel=%.3f, GPL=%.3f",
-                  (unsigned long)stationList.count, avgPetrol, avgDiesel, avgLPG);
+            NSLog(@"[FuelPriceService] MIMIT aggiornato: %lu distributori caricati. Medie: Benzina=%.3f, Diesel=%.3f, GPL=%.3f, Metano=%.3f",
+                  (unsigned long)stationList.count, avgPetrol, avgDiesel, avgLPG, avgMethane);
 
             [[NSNotificationCenter defaultCenter] postNotificationName:kFuelPricesUpdatedNotification object:weakSelf];
             if (completion) {
@@ -555,8 +679,10 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     int radiusMeters = MAX(3000, MIN(30000, radiusKm * 1000));
     NSString *query = [NSString stringWithFormat:
                        @"[out:json][timeout:10];"
-                       @"node[\"amenity\"=\"fuel\"](around:%d,%.5f,%.5f);"
-                       @"out body 30;",
+                       @"(node[\"amenity\"=\"fuel\"](around:%d,%.5f,%.5f);"
+                       @"node[\"amenity\"=\"charging_station\"](around:%d,%.5f,%.5f););"
+                       @"out body 40;",
+                       radiusMeters, coord.latitude, coord.longitude,
                        radiusMeters, coord.latitude, coord.longitude];
 
     NSString *encodedQuery = [query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
@@ -589,6 +715,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         double defPetrol = [weakSelf effectivePriceForFuelType:FuelTypePetrol];
         double defDiesel = [weakSelf effectivePriceForFuelType:FuelTypeDiesel];
         double defLpg = [weakSelf effectivePriceForFuelType:FuelTypeLPG];
+        double defMethane = [weakSelf effectivePriceForFuelType:FuelTypeMethane];
 
         for (NSDictionary *elem in elements) {
             double lat = [elem[@"lat"] doubleValue];
@@ -596,14 +723,76 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
             if (lat == 0.0 && lon == 0.0) continue;
 
             NSDictionary *tags = [elem[@"tags"] isKindOfClass:[NSDictionary class]] ? elem[@"tags"] : @{};
+            NSString *amenity = [tags[@"amenity"] isKindOfClass:[NSString class]] ? tags[@"amenity"] : nil;
+            BOOL isCharging = [amenity isEqualToString:@"charging_station"];
+
+            // Determinazione dei carburanti realmente disponibili dai tag OSM
+            // (fuel:petrol, fuel:diesel, fuel:lpg/autogas, fuel:cng/compressed_natural_gas,
+            //  fuel:electricity/electric, octane, tag legacy "fuel").
+            NSUInteger mask = 0;
+            if (OSMTagIsPositive(tags[@"fuel:petrol"]) || OSMTagIsPositive(tags[@"fuel:gasoline"])) {
+                mask |= FuelMaskForType(FuelTypePetrol);
+            }
+            if (OSMTagIsPositive(tags[@"fuel:diesel"])) {
+                mask |= FuelMaskForType(FuelTypeDiesel);
+            }
+            if (OSMTagIsPositive(tags[@"fuel:lpg"]) || OSMTagIsPositive(tags[@"fuel:autogas"])) {
+                mask |= FuelMaskForType(FuelTypeLPG);
+            }
+            if (OSMTagIsPositive(tags[@"fuel:cng"]) ||
+                OSMTagIsPositive(tags[@"fuel:compressed_natural_gas"]) ||
+                OSMTagIsPositive(tags[@"fuel:methane"])) {
+                mask |= FuelMaskForType(FuelTypeMethane);
+            }
+            if (OSMTagIsPositive(tags[@"fuel:electricity"]) || OSMTagIsPositive(tags[@"fuel:electric"])) {
+                mask |= FuelMaskForType(FuelTypeElectric);
+            }
+            if (OSMTagIsPositive(tags[@"fuel:octane_95"]) ||
+                OSMTagIsPositive(tags[@"fuel:octane_98"]) ||
+                OSMTagIsPositive(tags[@"fuel:octane_100"])) {
+                mask |= FuelMaskForType(FuelTypePetrol);
+            }
+
+            id legacyFuel = tags[@"fuel"];
+            if ([legacyFuel isKindOfClass:[NSString class]] && [(NSString *)legacyFuel length] > 0) {
+                NSString *lv = [(NSString *)legacyFuel lowercaseString];
+                if ([lv rangeOfString:@"petrol"].location != NSNotFound ||
+                    [lv rangeOfString:@"gasoline"].location != NSNotFound) {
+                    mask |= FuelMaskForType(FuelTypePetrol);
+                }
+                if ([lv rangeOfString:@"diesel"].location != NSNotFound) {
+                    mask |= FuelMaskForType(FuelTypeDiesel);
+                }
+                if ([lv rangeOfString:@"lpg"].location != NSNotFound ||
+                    [lv rangeOfString:@"autogas"].location != NSNotFound) {
+                    mask |= FuelMaskForType(FuelTypeLPG);
+                }
+                if ([lv rangeOfString:@"cng"].location != NSNotFound ||
+                    [lv rangeOfString:@"methane"].location != NSNotFound) {
+                    mask |= FuelMaskForType(FuelTypeMethane);
+                }
+                if ([lv rangeOfString:@"electric"].location != NSNotFound) {
+                    mask |= FuelMaskForType(FuelTypeElectric);
+                }
+            }
+
+            if (isCharging) {
+                mask |= FuelMaskForType(FuelTypeElectric);
+            }
+            if (mask == 0 && !isCharging) {
+                // amenity=fuel senza tag specifici: disponibilità predefinita Benzina+Diesel.
+                mask = FuelDefaultMask();
+            }
+
             FuelStation *st = [[FuelStation alloc] init];
             st.stationId = [elem[@"id"] longLongValue];
             st.coordinate = CLLocationCoordinate2DMake(lat, lon);
             NSString *bTag = [tags[@"brand"] isKindOfClass:[NSString class]] ? tags[@"brand"] :
                              ([tags[@"operator"] isKindOfClass:[NSString class]] ? tags[@"operator"] :
-                             ([tags[@"name"] isKindOfClass:[NSString class]] ? tags[@"name"] : nil));
+                             ([tags[@"network"] isKindOfClass:[NSString class]] ? tags[@"network"] :
+                             ([tags[@"name"] isKindOfClass:[NSString class]] ? tags[@"name"] : nil)));
             st.brand = bTag;
-            st.name = [tags[@"name"] isKindOfClass:[NSString class]] ? tags[@"name"] : (bTag ?: @"Distributore");
+            st.name = [tags[@"name"] isKindOfClass:[NSString class]] ? tags[@"name"] : (bTag ?: (isCharging ? @"Colonnina di ricarica" : @"Distributore"));
             NSString *street = [tags[@"addr:street"] isKindOfClass:[NSString class]] ? tags[@"addr:street"] : nil;
             NSString *housenumber = [tags[@"addr:housenumber"] isKindOfClass:[NSString class]] ? tags[@"addr:housenumber"] : nil;
             if (street && housenumber) {
@@ -612,9 +801,11 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
                 st.address = street;
             }
 
-            st.petrolPriceSelf = defPetrol;
-            st.dieselPriceSelf = defDiesel;
-            st.lpgPrice = defLpg;
+            st.availableFuelTypeMask = mask;
+            if (mask & FuelMaskForType(FuelTypePetrol)) st.petrolPriceSelf = defPetrol;
+            if (mask & FuelMaskForType(FuelTypeDiesel)) st.dieselPriceSelf = defDiesel;
+            if (mask & FuelMaskForType(FuelTypeLPG)) st.lpgPrice = defLpg;
+            if (mask & FuelMaskForType(FuelTypeMethane)) st.methanePrice = defMethane;
             st.lastUpdated = [NSDate date];
 
             CLLocation *stLoc = [[CLLocation alloc] initWithLatitude:lat longitude:lon];
@@ -708,7 +899,9 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
 - (void)fetchOnlinePricesAroundCoordinate:(CLLocationCoordinate2D)coordinate
                                completion:(void (^)(BOOL success, NSString *statusMessage))completion {
-    [self fetchStationsAroundCoordinate:coordinate radiusKm:15 completion:^(NSArray<FuelStation *> *stations, NSError *error) {
+    // Aggiorna sempre le medie MIMIT Benzina/Diesel/GPL, indipendentemente
+    // dal tipo di carburante attualmente selezionato nel filtro (es. Elettrico).
+    [self fetchMIMITStationsAroundCoordinate:coordinate radiusKm:15 completion:^(NSArray<FuelStation *> *stations, NSError *error) {
         if (error || stations.count == 0) {
             if (completion) completion(NO, error.localizedDescription ?: @"Nessun distributore trovato in zona");
             return;
@@ -755,14 +948,22 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
 - (NSArray<FuelStationAnnotation *> *)annotationsForCachedStations {
     NSMutableArray *list = [NSMutableArray array];
-    FuelType curType = self.selectedFuelType;
+    // Il filtro selezionato limita QUALI stazioni vengono mostrate (solo quelle che
+    // vendono realmente il carburante scelto)...
+    FuelType filterType = self.selectedFuelType;
     NSArray<FuelStation *> *stations = self.cachedStations;
     NSUInteger count = 0;
     for (FuelStation *st in stations) {
         if (!st || !CLLocationCoordinate2DIsValid(st.coordinate) || (fabs(st.coordinate.latitude) < 0.1 && fabs(st.coordinate.longitude) < 0.1)) {
             continue;
         }
-        [list addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:curType]];
+        if (![st hasFuelType:filterType]) {
+            continue;
+        }
+        // ...mentre l'icona/label del marker rappresenta i carburanti EFFETTIVAMENTE
+        // disponibili nella stazione (deterministico, indipendente dal filtro).
+        FuelType displayType = [st primaryAvailableFuelType];
+        [list addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:displayType]];
         count++;
         if (count >= 45) { // Limita a 45 per non sovraccaricare i 512MB RAM dell'iPad Mini 1
             break;

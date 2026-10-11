@@ -421,7 +421,8 @@
                     NLString(@"FUEL_PETROL", @"Benzina"),
                     NLString(@"FUEL_DIESEL", @"Diesel"),
                     @"GPL",
-                    NLString(@"FUEL_ELECTRIC", @"Elettrico")
+                    NLString(@"FUEL_ELECTRIC", @"Elettrico"),
+                    NLString(@"FUEL_METHANE", @"Metano")
                 ]];
                 [self.fuelTypeSegment addTarget:self action:@selector(applyFuelTypeChange:) forControlEvents:UIControlEventValueChanged];
                 self.fuelTypeSegment.tintColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0];
@@ -444,7 +445,7 @@
             self.consumptionTextField.text = [NSString stringWithFormat:@"%.1f", val];
             cell.accessoryView = self.consumptionTextField;
         } else if (indexPath.row == 2) {
-            NSString *unit = (curType == FuelTypeElectric) ? @"€/kWh" : @"€/L";
+            NSString *unit = [NSString stringWithFormat:@"€/%@", [fuel unitForFuelType:curType]];
             cell.textLabel.text = [NSString stringWithFormat:@"%@ (%@)", NLString(@"FUEL_PRICE", @"Prezzo Carburante"), unit];
             if (!self.priceTextField) {
                 self.priceTextField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 95, 32)];

@@ -147,7 +147,15 @@ static NSArray *POICategoriesDefinition(void) {
     NSString *query = objc_getAssociatedObject(sender, "poi_query");
     NSString *key = objc_getAssociatedObject(sender, "poi_key");
     NSString *def = objc_getAssociatedObject(sender, "poi_def");
-    NSString *name = (key && def) ? NLString(key, def) : objc_getAssociatedObject(sender, "poi_name");
+    NSString *name;
+    if ([query isEqualToString:@"fuel"]) {
+        // La categoria carburante deve riflettere il filtro attualmente selezionato
+        // (Benzina/Diesel/GPL/Metano/Elettrico), non l'etichetta generica "Benzina".
+        FuelType curFuel = [FuelPriceService sharedService].selectedFuelType;
+        name = [[FuelPriceService sharedService] nameForFuelType:curFuel];
+    } else {
+        name = (key && def) ? NLString(key, def) : objc_getAssociatedObject(sender, "poi_name");
+    }
 
     if ([self.delegate respondsToSelector:@selector(quickPOIShelfView:didRequestSearchCategory:categoryName:)]) {
         [self.delegate quickPOIShelfView:self didRequestSearchCategory:query categoryName:name];
@@ -164,9 +172,13 @@ static NSArray *POICategoriesDefinition(void) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [weakSelf.spinner stopAnimating];
                     NSMutableArray *annotations = [NSMutableArray array];
-                    FuelType fType = [FuelPriceService sharedService].selectedFuelType;
+                    FuelType filterType = [FuelPriceService sharedService].selectedFuelType;
                     for (FuelStation *st in stations) {
-                        [annotations addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:fType]];
+                        // Il filtro limita le stazioni mostrate; il marker mostra
+                        // i carburanti realmente disponibili nella stazione.
+                        if (![st hasFuelType:filterType]) continue;
+                        FuelType displayType = [st primaryAvailableFuelType];
+                        [annotations addObject:[[FuelStationAnnotation alloc] initWithStation:st fuelType:displayType]];
                     }
                     if ([weakSelf.delegate respondsToSelector:@selector(quickPOIShelfView:didFindPOIs:categoryName:)]) {
                         [weakSelf.delegate quickPOIShelfView:weakSelf didFindPOIs:annotations categoryName:categoryName];

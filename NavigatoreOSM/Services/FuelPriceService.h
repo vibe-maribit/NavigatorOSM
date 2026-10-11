@@ -6,8 +6,12 @@ typedef NS_ENUM(NSInteger, FuelType) {
     FuelTypePetrol = 0,    // Benzina
     FuelTypeDiesel = 1,    // Gasolio / Diesel
     FuelTypeLPG = 2,       // GPL
-    FuelTypeElectric = 3   // Elettrico
+    FuelTypeElectric = 3,  // Elettrico (colonnine di ricarica)
+    FuelTypeMethane = 4    // Metano (CNG)
 };
+
+/// Numero totale di tipi di carburante gestiti dall'app
+extern const NSInteger kFuelTypeCount;
 
 extern NSString *const kFuelPricesUpdatedNotification;
 
@@ -28,6 +32,28 @@ extern NSString *const kFuelPricesUpdatedNotification;
 @property (nonatomic, assign) double methanePrice;
 @property (nonatomic, assign) double distanceFromQuery; // in km
 @property (nonatomic, strong) NSDate *lastUpdated;
+
+/// Maschera dei tipi di carburante effettivamente disponibili nella stazione (bit = FuelType).
+/// Se 0 la disponibilità è sconosciuta e viene trattata come Benzina+Diesel.
+@property (nonatomic, assign) NSUInteger availableFuelTypeMask;
+
+/// Maschera risolta: se `availableFuelTypeMask` è 0 restituisce la disponibilità predefinita.
+- (NSUInteger)resolvedFuelTypeMask;
+
+/// Indica se la stazione vende effettivamente il tipo di carburante indicato.
+- (BOOL)hasFuelType:(FuelType)type;
+
+/// Tipo di carburante rappresentativo della stazione (deterministico, indipendente dal filtro).
+- (FuelType)primaryAvailableFuelType;
+
+/// Stringa compatta dei carburanti disponibili (es. "B D GPL ⚡").
+- (NSString *)availableFuelBadgeString;
+
+/// Glifo del marker: "⚡" per stazioni di sola ricarica elettrica, "⛽" altrimenti.
+- (NSString *)markerGlyphString;
+
+/// Array (di NSNumber di FuelType) dei carburanti disponibili in ordine deterministico.
+- (NSArray<NSNumber *> *)availableFuelTypes;
 
 - (double)effectivePriceForFuelType:(FuelType)type;
 - (NSString *)displayTitleForFuelType:(FuelType)type;
@@ -54,6 +80,9 @@ extern NSString *const kFuelPricesUpdatedNotification;
 
 /// Restituisce il nome localizzato del tipo di carburante
 - (NSString *)nameForFuelType:(FuelType)type;
+
+/// Restituisce un'etichetta compatta del tipo di carburante (es. "B", "D", "GPL", "MET", "⚡")
+- (NSString *)shortNameForFuelType:(FuelType)type;
 
 /// Restituisce l'unità di misura del volume / energia ("L" o "kWh")
 - (NSString *)unitForFuelType:(FuelType)type;
