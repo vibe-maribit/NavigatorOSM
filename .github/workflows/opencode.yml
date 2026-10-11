@@ -76,16 +76,17 @@ jobs:
         id: react
         run: |
           API="$GH_API/repos/$REPO"
+          # Reagisci al commento specifico (se l'evento proviene da un commento)
           if [ -n "$COMMENT_ID" ]; then
-            RPATH="issues/comments/$COMMENT_ID/reactions"
-          elif [ -n "$ISSUE_NUMBER" ]; then
-            RPATH="issues/$ISSUE_NUMBER/reactions"
-          else
-            RPATH=""
+            curl -s -X POST "$API/issues/comments/$COMMENT_ID/reactions" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d '{"content":"eyes"}' > /dev/null || true
           fi
-          echo "path=$RPATH" >> "$GITHUB_OUTPUT"
-          if [ -n "$RPATH" ]; then
-            curl -s -X POST "$API/$RPATH" \
+          # Reagisci sempre anche sull'Issue principale in testata
+          if [ -n "$ISSUE_NUMBER" ]; then
+            curl -s -X POST "$API/issues/$ISSUE_NUMBER/reactions" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -H "Content-Type: application/json" \
