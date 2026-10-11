@@ -31,6 +31,49 @@ echo "Modello: $CHOSEN_MODEL | Max Iterazioni: $MAX_ITERATIONS"
 echo "Branch di lavoro: ${BRANCH_NAME:-$DEFAULT_BRANCH} | Base: $DEFAULT_BRANCH | Plan Key: $PLAN_KEY"
 echo "=========================================================="
 
+# ── 0. FASE TRIAGE & DEDUPLICAZIONE ──────────────────────────────────────────
+if [ ! -s "$PLAN_FILE" ]; then
+  echo "::group::Fase 0 — TRIAGE & DEDUP ($CHOSEN_MODEL)"
+  CLEAN_PROMPT=$(cat /tmp/clean_prompt.txt 2>/dev/null || echo "Nessun prompt")
+  CONTEXT=$(cat /tmp/context.txt 2>/dev/null || echo "")
+  RECENT_ISSUES=$(cat /tmp/recent_issues.txt 2>/dev/null || echo "Nessuna issue recente trovata.")
+
+  TRIAGE_PROMPT="Esegui il TRIAGE e la DEDUPLICAZIONE della richiesta per NavigatorOSM.
+Richiesta: $CLEAN_PROMPT
+Contesto Issue: ${ISSUE_TITLE:-} - ${ISSUE_BODY:-}
+$CONTEXT
+
+Elenco Issue Recenti del Repository:
+$RECENT_ISSUES"
+
+  TRIAGE_OUTPUT="/tmp/triage.txt"
+  if ! opencode run --agent triage --model "$CHOSEN_MODEL" "$TRIAGE_PROMPT" 2>&1 | tee "$TRIAGE_OUTPUT"; then
+    if [ "$CHOSEN_MODEL" != "opencode/big-pickle" ]; then
+      echo "⚠️ Fallimento con $CHOSEN_MODEL nel triage. Fallback a opencode/big-pickle..."
+      CHOSEN_MODEL="opencode/big-pickle"
+      opencode run --agent triage --model "$CHOSEN_MODEL" "$TRIAGE_PROMPT" 2>&1 | tee "$TRIAGE_OUTPUT" || true
+    fi
+  fi
+  echo "::endgroup::"
+
+  if grep -Eq 'TRIAGE_STATUS:[[:space:]]*ALREADY_IMPLEMENTED' "$TRIAGE_OUTPUT"; then
+    echo "✅ Triage: la richiesta risulta già implementata nel codice attuale."
+    echo "TRIAGE_DECISION=ALREADY_IMPLEMENTED" >> "${GITHUB_OUTPUT:-/tmp/runner_output.env}"
+    echo "VERDICT=ALREADY_DONE" >> "${GITHUB_OUTPUT:-/tmp/runner_output.env}"
+    cp "$TRIAGE_OUTPUT" /tmp/triage_reason.txt
+    exit 0
+  elif grep -Eq 'TRIAGE_STATUS:[[:space:]]*DUPLICATE' "$TRIAGE_OUTPUT"; then
+    echo "⚠️ Triage: la richiesta risulta duplicata."
+    echo "TRIAGE_DECISION=DUPLICATE" >> "${GITHUB_OUTPUT:-/tmp/runner_output.env}"
+    echo "VERDICT=DUPLICATE" >> "${GITHUB_OUTPUT:-/tmp/runner_output.env}"
+    cp "$TRIAGE_OUTPUT" /tmp/triage_reason.txt
+    exit 0
+  else
+    echo "👍 Triage: procedo con la pianificazione e l'implementazione."
+    echo "TRIAGE_DECISION=PROCEED" >> "${GITHUB_OUTPUT:-/tmp/runner_output.env}"
+  fi
+fi
+
 # ── 1. FASE PLAN ─────────────────────────────────────────────────────────────
 if [ -s "$PLAN_FILE" ]; then
   echo "📋 Piano esistente trovato in $PLAN_FILE: riutilizzo del piano."

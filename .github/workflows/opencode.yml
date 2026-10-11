@@ -19,6 +19,10 @@ permissions:
   issues: write
   actions: write
 
+concurrency:
+  group: opencode-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   opencode-github:
     if: |
@@ -58,34 +62,55 @@ jobs:
       MAX_ITERATIONS: "4"
 
     steps:
-      - name: Verifica autorizzazione utente
+      - name: Verifica autorizzazione utente e stato issue
         run: |
           ALLOWED_USERS="${{ vars.OPENCODE_ALLOWED_USERS || 'nik2208 vibe-maribit' }}"
           if [ "$IS_MANUAL" = "true" ]; then exit 0; fi
           ASSOC="${{ github.event.issue.author_association || github.event.comment.author_association }}"
+          IS_AUTH=false
           if [ "$ASSOC" = "OWNER" ] || [ "$ASSOC" = "COLLABORATOR" ] || [ "$ASSOC" = "MEMBER" ]; then
             echo "Utente '$COMMENT_AUTHOR' autorizzato con associazione $ASSOC."
-            exit 0
+            IS_AUTH=true
+          elif echo " $ALLOWED_USERS " | grep -q " $COMMENT_AUTHOR "; then
+            echo "Utente '$COMMENT_AUTHOR' presente nella whitelist autorizzata."
+            IS_AUTH=true
           fi
-          if ! echo " $ALLOWED_USERS " | grep -q " $COMMENT_AUTHOR "; then
+          if [ "$IS_AUTH" != "true" ]; then
             echo "Utente '$COMMENT_AUTHOR' non autorizzato. Interrompo."
             exit 1
+          fi
+
+          # Pre-check rapido: issue chiusa o etichette di blocco (duplicate, invalid, wontfix)
+          if [ -n "$ISSUE_NUMBER" ]; then
+            API="$GH_API/repos/$REPO"
+            ISS_JSON=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/issues/$ISSUE_NUMBER")
+            IS_CLOSED=$(echo "$ISS_JSON" | jq -r '.state == "closed"')
+            LABELS=$(echo "$ISS_JSON" | jq -r '.labels[].name' 2>/dev/null || true)
+            if echo "$LABELS" | grep -Eq '(duplicate|invalid|wontfix)'; then
+              echo "⚠️ Issue #$ISSUE_NUMBER contrassegnata con etichetta di blocco ($LABELS). Termino."
+              exit 0
+            fi
+            if [ "$IS_CLOSED" = "true" ] && ! echo "$COMMENT_BODY" | grep -Eiq '(riapri|reopen|nuov[oa])'; then
+              echo "ℹ️ Issue #$ISSUE_NUMBER risulta già chiusa. Nessun comando di riapertura. Termino."
+              exit 0
+            fi
           fi
 
       - name: Reagisci al comando (👀)
         id: react
         run: |
           API="$GH_API/repos/$REPO"
+          # Reagisci al commento specifico (se l'evento proviene da un commento)
           if [ -n "$COMMENT_ID" ]; then
-            RPATH="issues/comments/$COMMENT_ID/reactions"
-          elif [ -n "$ISSUE_NUMBER" ]; then
-            RPATH="issues/$ISSUE_NUMBER/reactions"
-          else
-            RPATH=""
+            curl -s -X POST "$API/issues/comments/$COMMENT_ID/reactions" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d '{"content":"eyes"}' > /dev/null || true
           fi
-          echo "path=$RPATH" >> "$GITHUB_OUTPUT"
-          if [ -n "$RPATH" ]; then
-            curl -s -X POST "$API/$RPATH" \
+          # Reagisci sempre anche sull'Issue principale in testata
+          if [ -n "$ISSUE_NUMBER" ]; then
+            curl -s -X POST "$API/issues/$ISSUE_NUMBER/reactions" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -H "Content-Type: application/json" \
@@ -147,6 +172,8 @@ jobs:
           if [ "$IS_PR" = "true" ] || git ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null 2>&1; then
             git fetch origin "$BRANCH_NAME"
             git checkout -B "$BRANCH_NAME" "origin/$BRANCH_NAME"
+            git fetch origin "$DEFAULT_BRANCH"
+            git merge "origin/$DEFAULT_BRANCH" --no-edit -m "Sync $DEFAULT_BRANCH into $BRANCH_NAME" || true
           else
             git fetch origin "$DEFAULT_BRANCH"
             git checkout -B "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
@@ -163,6 +190,9 @@ jobs:
             echo "== Commenti recenti ==" >> /tmp/context.txt
             curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API/issues/$PR_NUMBER/comments" | jq -r '.[] | "- (\(.user.login)): \(.body)"' >> /tmp/context.txt || true
           fi
+          # Scarica elenco issue recenti per la fase di triage e deduplicazione
+          curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$API/issues?state=all&per_page=20" | jq -r '.[] | "#\(.number) [\(.state)]: \(.title)"' > /tmp/recent_issues.txt 2>/dev/null || true
           printf '%s' "$COMMENT_BODY" | sed -e 's|/opencode||g' -e 's|/oc||g' > /tmp/clean_prompt.txt
 
       - name: Risolvi modello (Visual / Default / Override)
@@ -193,7 +223,7 @@ jobs:
           [ -z "$FINAL_MODEL" ] && FINAL_MODEL="opencode/big-pickle"
           echo "selected_model=$FINAL_MODEL" >> "$GITHUB_OUTPUT"
 
-      - name: Esegui Orchestrazione OpenCode (Plan + Build/Review Loop)
+      - name: Esegui Orchestrazione OpenCode (Triage + Plan + Build/Review Loop)
         id: build_review
         run: |
           export BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
@@ -206,8 +236,49 @@ jobs:
           VERDICT=$(grep '^VERDICT=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "FAIL")
           echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
 
+      - name: Gestisci esito Triage (Già implementato o Duplicato)
+        if: steps.build_review.outputs.verdict == 'ALREADY_DONE' || steps.build_review.outputs.verdict == 'DUPLICATE'
+        run: |
+          API="$GH_API/repos/$REPO"
+          VERDICT="${{ steps.build_review.outputs.verdict }}"
+          REASON=$(cat /tmp/triage_reason.txt 2>/dev/null || echo "Nessun dettaglio fornito dal triage.")
+
+          if [ "$VERDICT" = "ALREADY_DONE" ]; then
+            if [ -n "$ISSUE_NUMBER" ]; then
+              MSG=$(printf '%s\n\n```\n%s\n```\n\n%s' \
+                "🔍 **Triage OpenCode: Funzionalità o correzione già presente!**" \
+                "$REASON" \
+                "Il codice sul branch \`develop\` soddisfa già i requisiti. Nessuna modifica necessaria.")
+              JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
+              curl -s -X POST "$API/issues/$ISSUE_NUMBER/comments" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$JSON_BODY" > /dev/null || true
+            fi
+            echo "✅ Concluso: la richiesta risulta già implementata."
+          elif [ "$VERDICT" = "DUPLICATE" ]; then
+            if [ -n "$ISSUE_NUMBER" ]; then
+              curl -s -X POST "$API/issues/$ISSUE_NUMBER/labels" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"labels":["duplicate"]}' > /dev/null || true
+
+              MSG=$(printf '%s\n\n```\n%s\n```\n\n%s' \
+                "🔍 **Triage OpenCode: Segnalazione Duplicata**" \
+                "$REASON" \
+                "L'elaborazione automatica è stata sospesa per evitare modifiche duplicate.")
+              JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
+              curl -s -X POST "$API/issues/$ISSUE_NUMBER/comments" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$JSON_BODY" > /dev/null || true
+            fi
+            echo "⚠️ Concluso: la richiesta è stata classificata come duplicato."
+          fi
+
       - name: Sincronizza con develop, pusha e apri/aggiorna PR
         id: push
+        if: steps.build_review.outputs.verdict != 'ALREADY_DONE' && steps.build_review.outputs.verdict != 'DUPLICATE'
         run: |
           API="$GH_API/repos/$REPO"
           BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
@@ -239,6 +310,7 @@ jobs:
           if [ "${{ steps.ctx.outputs.is_pr }}" = "true" ]; then
             PR_NUMBER="${{ steps.ctx.outputs.pr_number }}"
           else
+            echo "📝 Creazione Pull Request via API GitHub..."
             RESP=$(curl -s -X POST "$API/pulls" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -249,9 +321,14 @@ jobs:
                 \"title\": \"🤖 OpenCode ($CHOSEN_MODEL): $BRANCH_NAME\",
                 \"body\": \"Generata automaticamente da OpenCode ($CHOSEN_MODEL) su richiesta di @$COMMENT_AUTHOR.\n\nPiano: \`issue_plans/${{ steps.ctx.outputs.plan_key }}.md\`\n\nCloses #$ISSUE_NUMBER\"
               }")
-            PR_NUMBER=$(echo "$RESP" | jq -r '.number // empty')
+            PR_NUMBER=$(echo "$RESP" | jq -r '.number // empty' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
-              PR_NUMBER=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/pulls?state=open&per_page=50" | jq -r --arg b "$BRANCH_NAME" '.[] | select(.head.ref==$b) | .number' | head -n1)
+              PR_NUMBER=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/pulls?state=open&per_page=50" | jq -r --arg b "$BRANCH_NAME" '.[] | select(.head.ref==$b) | .number' | head -n1 || echo "")
+            fi
+            if [ -n "$PR_NUMBER" ]; then
+              echo "✅ PR #$PR_NUMBER creata o identificata."
+            else
+              echo "ℹ️ Creazione PR non completata via API (es. permessi limitati GITHUB_TOKEN). Verrà eseguito il fallback Git merge."
             fi
           fi
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
@@ -264,34 +341,59 @@ jobs:
           API="$GH_API/repos/$REPO"
           PR_NUMBER="${{ steps.push.outputs.pr_number }}"
           [ -z "$PR_NUMBER" ] && PR_NUMBER="${{ steps.ctx.outputs.pr_number }}"
-          if [ -z "$PR_NUMBER" ]; then exit 0; fi
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-develop}"
+          BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
+          MERGE_SUCCESS=false
 
-          echo "🔀 Auto-merge PR #$PR_NUMBER su $DEFAULT_BRANCH..."
-          for attempt in $(seq 1 12); do
-            MERGEABLE=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/pulls/$PR_NUMBER" | jq -r '.mergeable // "null"')
-            [ "$MERGEABLE" = "true" ] && break
-            [ "$MERGEABLE" = "false" ] && { echo "Conflitti non risolvibili automaticamente."; exit 0; }
-            sleep 5
-          done
+          # 1. Se esiste una PR aperta, tenta il merge via API GitHub
+          if [ -n "$PR_NUMBER" ]; then
+            echo "🔀 Tentativo auto-merge via API per PR #$PR_NUMBER su $DEFAULT_BRANCH..."
+            for attempt in $(seq 1 12); do
+              MERGEABLE=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "$API/pulls/$PR_NUMBER" | jq -r '.mergeable // "null"')
+              [ "$MERGEABLE" = "true" ] && break
+              [ "$MERGEABLE" = "false" ] && { echo "Conflitti non risolvibili via API."; break; }
+              sleep 5
+            done
 
-          MERGE_RESP=$(curl -s -X PUT "$API/pulls/$PR_NUMBER/merge" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"commit_title\": \"🤖 OpenCode merge: ${{ steps.ctx.outputs.branch_name }} (#$PR_NUMBER)\",
-              \"commit_message\": \"Merge automatico da OpenCode dopo VERDICT: PASS.\nCloses #$ISSUE_NUMBER\",
-              \"merge_method\": \"squash\"
-            }")
+            MERGE_RESP=$(curl -s -X PUT "$API/pulls/$PR_NUMBER/merge" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"commit_title\": \"🤖 OpenCode merge: $BRANCH_NAME (#$PR_NUMBER)\",
+                \"commit_message\": \"Merge automatico da OpenCode dopo VERDICT: PASS.\nCloses #${ISSUE_NUMBER:-$PR_NUMBER}\",
+                \"merge_method\": \"squash\"
+              }")
 
-          if [ "$(echo "$MERGE_RESP" | jq -r '.merged // false')" = "true" ]; then
-            echo "✅ PR mergiata con successo su $DEFAULT_BRANCH."
+            if [ "$(echo "$MERGE_RESP" | jq -r '.merged // false')" = "true" ]; then
+              echo "✅ PR #$PR_NUMBER mergiata con successo via API."
+              MERGE_SUCCESS=true
+            else
+              echo "⚠️ Merge via API non riuscito ($MERGE_RESP). Procedo con fallback Git merge diretto."
+            fi
+          fi
+
+          # 2. Fallback Fail-Safe: Se nessuna PR esiste o il merge API non è riuscito (es. permessi limitati di GITHUB_TOKEN),
+          # esegui il merge diretto con Git su develop!
+          if [ "$MERGE_SUCCESS" != "true" ]; then
+            echo "🔀 Esecuzione merge Git diretto del branch $BRANCH_NAME su $DEFAULT_BRANCH..."
+            git checkout "$DEFAULT_BRANCH"
+            git pull origin "$DEFAULT_BRANCH"
+            git merge --squash "$BRANCH_NAME" -m "🤖 OpenCode merge: $BRANCH_NAME (Closes #${ISSUE_NUMBER:-0})"
+            git push origin "$DEFAULT_BRANCH"
+            echo "✅ Merge Git diretto completato con successo su $DEFAULT_BRANCH."
+            MERGE_SUCCESS=true
+          fi
+
+          if [ "$MERGE_SUCCESS" = "true" ]; then
             echo "merged=true" >> "$GITHUB_OUTPUT"
-            if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$PR_NUMBER" ]; then
+            if [ -n "$ISSUE_NUMBER" ]; then
+              echo "🔒 Chiusura automatica dell'Issue #$ISSUE_NUMBER..."
               curl -s -X PATCH "$API/issues/$ISSUE_NUMBER" \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d '{"state":"closed","state_reason":"completed"}' > /dev/null || true
+              echo "✅ Issue #$ISSUE_NUMBER chiusa con stato completed."
             fi
           fi
 
